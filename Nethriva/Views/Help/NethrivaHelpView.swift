@@ -6,6 +6,10 @@ enum NethrivaWindow {
     static let help = "nethriva-help"
 }
 
+enum NethrivaLinks {
+    static let koFi = URL(string: "https://ko-fi.com/vsharapov")!
+}
+
 struct NethrivaHelpView: View {
     var body: some View {
         NethrivaHelpWebView()
@@ -90,6 +94,12 @@ struct NethrivaHelpCommands: Commands {
                 openWindow(id: NethrivaWindow.help)
             }
             .keyboardShortcut("/", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Support Nethriva on Ko-fi…") {
+                NSWorkspace.shared.open(NethrivaLinks.koFi)
+            }
         }
     }
 }

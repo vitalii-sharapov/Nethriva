@@ -425,7 +425,7 @@ The package lock records the exact revisions used by the project. Third-party no
 
 ## Support Nethriva
 
-Nethriva is free and open-source software. If it saves you time and you would like to support its continued development, you can [sponsor the project through GitHub Sponsors](https://github.com/sponsors/vitalii-sharapov). Sponsorship is entirely optional and does not change the features or permissions provided by the Apache License 2.0.
+Nethriva is free and open-source software. If it saves you time and you would like to support its continued development, you can leave a [one-time tip through Ko-fi](https://ko-fi.com/vsharapov) or [sponsor the project through GitHub Sponsors](https://github.com/sponsors/vitalii-sharapov). Support is entirely optional and does not change the features or permissions provided by the Apache License 2.0.
 
 ## License and contributing
 
