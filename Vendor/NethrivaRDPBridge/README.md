@@ -12,4 +12,4 @@ Nethriva/Resources/FreeRDP/Frameworks/libRemoteDeckRDP.dylib
 
 It links against the self-contained FreeRDP libraries in the same `Frameworks` directory. Rebuild it with Xcode's `clang`, the matching FreeRDP generated headers, and these source files; use `@loader_path` as its runtime library search path. The full FreeRDP and linked-library license texts ship under `Nethriva/Resources/FreeRDP/ThirdPartyLicenses`.
 
-The `RemoteDeckRDP` symbol prefix and `libRemoteDeckRDP.dylib` filename are retained as a private compatibility ABI for the already-built native runtime. They are not user-facing product branding.
+The `RemoteDeckRDP` symbol prefix and `libRemoteDeckRDP.dylib` filename are private implementation identifiers used by the bundled native runtime.

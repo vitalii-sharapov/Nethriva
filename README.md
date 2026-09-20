@@ -464,6 +464,8 @@ docs/                          Architecture and integration notes
 
 Additional implementation and packaging details are available in [`docs/INTEGRATION_PLAN.md`](docs/INTEGRATION_PLAN.md). Brand usage and reproducible asset prompts are documented in [`docs/BRAND_ASSETS.md`](docs/BRAND_ASSETS.md).
 
+Durable development context is maintained in [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md), with future priorities tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## Command-line build verification
 
 ```sh

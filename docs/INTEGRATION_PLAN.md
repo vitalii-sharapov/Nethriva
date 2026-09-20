@@ -2,7 +2,7 @@
 
 Nethriva integrates SwiftTerm for local and SSH sessions, macOS OpenSSH/SFTP for compatibility with the user's existing configuration, and FreeRDP's native Cocoa client view for RDP. Passwords are stored in Keychain and are not included in the JSON connection store.
 
-Version 0.9.1 introduced the Nethriva product identity and bundle identifier. The persistence and Keychain services include a one-time compatibility lookup so connections, groups, and passwords created under the earlier development identifier continue to work.
+Nethriva uses stable persistence and Keychain identifiers so application updates continue to find saved connections, groups, and credentials.
 
 Version 0.10.0 adds a complete offline HTML help manual bundled in the application resources. A native SwiftUI help window hosts it through WebKit, with light/dark appearance support, section navigation, full-text highlighting, print styling, a Help-menu command, Command-?, and a main-window toolbar entry.
 
