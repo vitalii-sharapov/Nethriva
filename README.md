@@ -4,7 +4,7 @@
 
 Nethriva is an open-source native macOS connection manager for local terminal, SSH, SFTP, and RDP sessions. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
 
-The current release is Nethriva 0.10.0. When upgrading from the earlier project name, saved connections, connection groups, and Keychain passwords are migrated automatically on first access.
+The current release is Nethriva 0.10.0.
 
 ## At a glance
 
@@ -347,7 +347,7 @@ Open the SFTP browser when you need a larger file-management workspace. It suppo
 
 Opening an RDP connection places the desktop in the selected session tab. The desktop tracks the usable tab size, including sidebar changes, and can be magnified independently with Comfortable, Larger, or Largest interface scaling. Clipboard text, copied Finder items, and direct Finder drops can be sent to the active Windows desktop or Explorer window.
 
-## Data storage, privacy, and migration
+## Data storage and privacy
 
 - Connections and group names are stored locally in macOS user defaults.
 - Passwords are stored as generic-password items in macOS Keychain and are keyed by each connection's UUID.
@@ -356,7 +356,6 @@ Opening an RDP connection places the desktop in the selected session tab. The de
 - Temporary SSH multiplexing sockets use hashed names below `/private/tmp/Nethriva-*` and expire through OpenSSH's configured persistence window.
 - RDP certificate behavior is selected per connection; **Require Valid Certificate** is the strictest option.
 - Clipboard, microphone, folders, printers, smart cards, USB devices, and similar RDP redirects remain under per-connection control.
-- Data from the preceding application identity is imported automatically when no corresponding Nethriva data exists. Migrated Keychain items are copied into Nethriva's current Keychain service when first read.
 - Nethriva does not provide cloud synchronization, telemetry, or a hosted relay service in this release.
 
 ## Troubleshooting
@@ -442,10 +441,7 @@ Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party compon
 
 ### 0.9.1
 
-- Renamed the product, project, target, tests, app bundle, user-facing strings, and brand assets to Nethriva.
 - Added the Nethriva wordmark and complete macOS icon catalog.
-- Added one-time migration for existing connection records, connection groups, and Keychain passwords.
-- Preserved the already-built private RDP bridge ABI so embedded RDP behavior remains compatible after the product rename.
 
 ## Project structure
 
