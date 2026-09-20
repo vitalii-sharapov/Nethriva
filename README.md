@@ -423,6 +423,10 @@ Check network access, choose **File → Packages → Reset Package Caches**, and
 
 The package lock records the exact revisions used by the project. Third-party notices for the bundled RDP runtime are under `Nethriva/Resources/FreeRDP/ThirdPartyLicenses` and summarized in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
+## Support Nethriva
+
+Nethriva is free and open-source software. If it saves you time and you would like to support its continued development, you can [sponsor the project through GitHub Sponsors](https://github.com/sponsors/vitalii-sharapov). Sponsorship is entirely optional and does not change the features or permissions provided by the Apache License 2.0.
+
 ## License and contributing
 
 Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party components remain under their respective licenses. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change and [SECURITY.md](SECURITY.md) for safe vulnerability reporting.
