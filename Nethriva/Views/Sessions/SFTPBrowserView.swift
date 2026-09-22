@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SFTPBrowserView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settings: AppSettings
     @StateObject private var model: SFTPBrowserModel
 
     let connection: RemoteConnection
@@ -243,9 +244,11 @@ struct SFTPBrowserView: View {
                 Text("\(model.items.count) item\(model.items.count == 1 ? "" : "s")")
             }
             Spacer()
-            Text(connection.endpointDescription)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+            if let endpoint = settings.sessionEndpoint(for: connection) {
+                Text(endpoint)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(.caption)
         .padding(.horizontal, 12)

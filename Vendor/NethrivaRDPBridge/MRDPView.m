@@ -49,6 +49,7 @@
 #import "freerdp/log.h"
 
 #import <CoreGraphics/CoreGraphics.h>
+#import <openssl/crypto.h>
 
 #define TAG CLIENT_TAG("mac")
 
@@ -744,6 +745,17 @@ static BOOL releaseFlagStates(rdpInput *input, UINT32 aKbdModFlags)
 {
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
+	@synchronized(self)
+	{
+		free(pendingSavedUsername);
+		if (pendingSavedPassword)
+			OPENSSL_cleanse(pendingSavedPassword, strlen(pendingSavedPassword));
+		free(pendingSavedPassword);
+		free(pendingSavedDomain);
+		pendingSavedUsername = NULL;
+		pendingSavedPassword = NULL;
+		pendingSavedDomain = NULL;
+	}
 
 	if (!is_connected)
 		return;
@@ -1125,7 +1137,7 @@ void mac_post_disconnect(freerdp *instance)
 }
 
 static BOOL mac_show_auth_dialog(MRDPView *view, NSString *title, char **username, char **password,
-                                 char **domain)
+                                 char **domain, BOOL allowSaving)
 {
 	WINPR_ASSERT(view);
 	WINPR_ASSERT(title);
@@ -1136,6 +1148,7 @@ static BOOL mac_show_auth_dialog(MRDPView *view, NSString *title, char **usernam
 	PasswordDialog *dialog = [PasswordDialog new];
 
 	dialog.serverHostname = title;
+	dialog.allowsSaving = allowSaving;
 
 	if (*username)
 		dialog.username = [NSString stringWithCString:*username encoding:NSUTF8StringEncoding];
@@ -1168,29 +1181,75 @@ static BOOL mac_show_auth_dialog(MRDPView *view, NSString *title, char **usernam
 		if (submittedUsername && (submittedUsernameLen > 0))
 			*username = strndup(submittedUsername, submittedUsernameLen);
 
-		if (!(*username))
-			return FALSE;
-
-		const char *submittedPassword = [dialog.password cStringUsingEncoding:NSUTF8StringEncoding];
-		const size_t submittedPasswordLen =
-		    [dialog.password lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
-		if (submittedPassword && (submittedPasswordLen > 0))
-			*password = strndup(submittedPassword, submittedPasswordLen);
-
-		if (!(*password))
-			return FALSE;
-
-		const char *submittedDomain = [dialog.domain cStringUsingEncoding:NSUTF8StringEncoding];
-		const size_t submittedDomainLen =
-		    [dialog.domain lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
-		if (submittedDomain && (submittedDomainLen > 0))
+		if (*username)
 		{
-			*domain = strndup(submittedDomain, submittedDomainLen);
-			if (!(*domain))
-				return FALSE;
+			const char *submittedPassword =
+			    [dialog.password cStringUsingEncoding:NSUTF8StringEncoding];
+			const size_t submittedPasswordLen =
+			    [dialog.password lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+			if (submittedPassword && (submittedPasswordLen > 0))
+				*password = strndup(submittedPassword, submittedPasswordLen);
 		}
+
+		if (*username && *password)
+		{
+			const char *submittedDomain =
+			    [dialog.domain cStringUsingEncoding:NSUTF8StringEncoding];
+			const size_t submittedDomainLen =
+			    [dialog.domain lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+			if (submittedDomain && (submittedDomainLen > 0))
+				*domain = strndup(submittedDomain, submittedDomainLen);
+		}
+		ok = *username && *password;
 	}
 
+	// Keep only an explicitly requested candidate, and let the Swift host
+	// persist it after FreeRDP reports a successful connection.
+	if (allowSaving)
+	{
+		@synchronized(view)
+		{
+			free(view->pendingSavedUsername);
+			if (view->pendingSavedPassword)
+				OPENSSL_cleanse(view->pendingSavedPassword,
+				                strlen(view->pendingSavedPassword));
+			free(view->pendingSavedPassword);
+			free(view->pendingSavedDomain);
+			view->pendingSavedUsername = NULL;
+			view->pendingSavedPassword = NULL;
+			view->pendingSavedDomain = NULL;
+			if (ok && dialog.saveCredentials)
+			{
+				view->pendingSavedUsername = strdup(*username);
+				view->pendingSavedPassword = strdup(*password);
+				if (*domain)
+					view->pendingSavedDomain = strdup(*domain);
+				if (!view->pendingSavedUsername || !view->pendingSavedPassword ||
+				    (*domain && !view->pendingSavedDomain))
+				{
+					free(view->pendingSavedUsername);
+					if (view->pendingSavedPassword)
+						OPENSSL_cleanse(view->pendingSavedPassword,
+						                strlen(view->pendingSavedPassword));
+					free(view->pendingSavedPassword);
+					free(view->pendingSavedDomain);
+					view->pendingSavedUsername = NULL;
+					view->pendingSavedPassword = NULL;
+					view->pendingSavedDomain = NULL;
+				}
+			}
+		}
+	}
+	[dialog release];
+	if (!ok)
+	{
+		free(*username);
+		free(*password);
+		free(*domain);
+		*username = nullptr;
+		*password = nullptr;
+		*domain = nullptr;
+	}
 	return ok;
 }
 
@@ -1198,6 +1257,7 @@ static BOOL mac_authenticate_raw(freerdp *instance, char **username, char **pass
                                  rdp_auth_reason reason)
 {
 	BOOL pinOnly = FALSE;
+	BOOL allowSaving = FALSE;
 
 	WINPR_ASSERT(instance);
 	WINPR_ASSERT(instance->context);
@@ -1222,6 +1282,7 @@ static BOOL mac_authenticate_raw(freerdp *instance, char **username, char **pass
 		case AUTH_TLS:
 		case AUTH_RDP:
 		case AUTH_NLA:
+			allowSaving = TRUE;
 			title = [NSString
 			    stringWithFormat:@"%@:%u",
 			                     [NSString stringWithCString:freerdp_settings_get_string(
@@ -1248,17 +1309,17 @@ static BOOL mac_authenticate_raw(freerdp *instance, char **username, char **pass
 
 	if (!*username && !pinOnly)
 	{
-		if (!mac_show_auth_dialog(view, title, username, password, domain))
+		if (!mac_show_auth_dialog(view, title, username, password, domain, allowSaving))
 			goto fail;
 	}
 	else if (!*domain && !pinOnly)
 	{
-		if (!mac_show_auth_dialog(view, title, username, password, domain))
+		if (!mac_show_auth_dialog(view, title, username, password, domain, allowSaving))
 			goto fail;
 	}
 	else if (!*password)
 	{
-		if (!mac_show_auth_dialog(view, title, username, password, domain))
+		if (!mac_show_auth_dialog(view, title, username, password, domain, allowSaving))
 			goto fail;
 	}
 
@@ -1336,7 +1397,9 @@ DWORD mac_verify_certificate_ex(freerdp *instance, const char *host, UINT16 port
 	[dialog performSelectorOnMainThread:@selector(runModal:)
 	                         withObject:[view window]
 	                      waitUntilDone:TRUE];
-	return dialog.result;
+	const DWORD result = dialog.result;
+	[dialog release];
+	return result;
 }
 
 DWORD mac_verify_changed_certificate_ex(freerdp *instance, const char *host, UINT16 port,
@@ -1373,7 +1436,9 @@ DWORD mac_verify_changed_certificate_ex(freerdp *instance, const char *host, UIN
 	[dialog performSelectorOnMainThread:@selector(runModal:)
 	                         withObject:[view window]
 	                      waitUntilDone:TRUE];
-	return dialog.result;
+	const DWORD result = dialog.result;
+	[dialog release];
+	return result;
 }
 
 int mac_logon_error_info(freerdp *instance, UINT32 data, UINT32 type)

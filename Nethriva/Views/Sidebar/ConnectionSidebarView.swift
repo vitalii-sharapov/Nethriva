@@ -71,6 +71,19 @@ struct ConnectionSidebarView: View {
                 .menuStyle(.borderlessButton)
                 .help("Actions for the selected connection")
 
+                Menu {
+                    Button("Import Connections…") {
+                        appState.chooseConnectionArchiveToImport()
+                    }
+                    Button("Export Connections…") {
+                        appState.requestConnectionExport()
+                    }
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Import or export the connection library")
+
                 Spacer()
 
                 Button {

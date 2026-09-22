@@ -234,9 +234,11 @@
         <a href="#quick-start">Quick start</a>
         <a href="#workspace">Workspace</a>
         <a href="#connections">Connections and groups</a>
+        <a href="#settings">Settings and privacy</a>
         <div class="section-label">Sessions</div>
         <a href="#local-terminal">Local Terminal</a>
         <a href="#ssh">SSH</a>
+        <a href="#telnet">Telnet</a>
         <a href="#remote-files">SSH file tree</a>
         <a href="#sftp">SFTP browser</a>
         <a href="#rdp">RDP</a>
@@ -253,8 +255,8 @@
     <main>
       <header class="hero" id="welcome">
         <h1>Nethriva Help</h1>
-        <p>A complete offline guide to organizing connections, using local and remote terminals, transferring files, and working with embedded Windows desktops.</p>
-        <span class="version">Nethriva 0.10.0 · Help edition</span>
+        <p>A complete offline guide to organizing connections, using local, SSH, and Telnet terminals, transferring files, and working with embedded Windows desktops.</p>
+        <span class="version">Nethriva 0.11.0 · Help edition</span>
       </header>
 
       <section id="quick-start">
@@ -262,7 +264,7 @@
         <h2>Quick start</h2>
         <ol>
           <li>Choose <strong>Add → New Connection</strong> in the sidebar.</li>
-          <li>Select <strong>SSH</strong> or <strong>RDP</strong>, then enter a name, host, port, username, and optional password.</li>
+          <li>Select <strong>SSH</strong>, <strong>Telnet</strong>, or <strong>RDP</strong>, then enter a name, host, port, username, and optional password.</li>
           <li>Choose a group and favorite status, configure any protocol-specific options, and click <strong>Add</strong>.</li>
           <li>Double-click the connection, select it and press <kbd>⌘O</kbd>, or choose <strong>Open</strong> from its context menu.</li>
           <li>For SSH file management, use the tree beside the terminal or choose <strong>Open SFTP Browser</strong>.</li>
@@ -274,8 +276,8 @@
         <a class="top-link" href="#top">Back to top</a>
         <h2>The workspace</h2>
         <div class="cards">
-          <div class="card"><h3>Connection sidebar</h3><p>Favorites, groups, saved SSH and RDP hosts, the built-in Local Terminal, and connection actions.</p></div>
-          <div class="card"><h3>Session tabs</h3><p>Independent local terminal, SSH, SFTP, and RDP sessions that remain active while you switch tabs.</p></div>
+          <div class="card"><h3>Connection sidebar</h3><p>Favorites, groups, saved SSH, Telnet, and RDP hosts, the built-in Local Terminal, and connection actions.</p></div>
+          <div class="card"><h3>Session tabs</h3><p>Independent local terminal, SSH, Telnet, SFTP, and RDP sessions that remain active while you switch tabs.</p></div>
           <div class="card"><h3>Session area</h3><p>The active terminal, file browser, or embedded Windows desktop automatically fills the available workspace.</p></div>
           <div class="card"><h3>Resizable layout</h3><p>Resize or hide the sidebar. RDP sessions recalculate their remote desktop size to match the visible area.</p></div>
         </div>
@@ -299,14 +301,35 @@
           <tbody>
             <tr><td>Name</td><td>The friendly label displayed in the sidebar and tab.</td></tr>
             <tr><td>Host</td><td>A hostname or IP address reachable from this Mac.</td></tr>
-            <tr><td>Port</td><td>Defaults to 22 for SSH and 3389 for RDP. Any valid TCP port may be used.</td></tr>
+            <tr><td>Port</td><td>Defaults to 22 for SSH, 23 for Telnet, and 3389 for RDP. Any valid TCP port may be used.</td></tr>
             <tr><td>Username</td><td>The remote account. RDP also accepts <code>DOMAIN\username</code>.</td></tr>
-            <tr><td>Password</td><td>Optional secret stored in Keychain. Leaving it blank while editing keeps the existing password.</td></tr>
+            <tr><td>Password</td><td>Optional secret stored in Keychain. Leaving it blank while editing keeps the existing password; use Remove Saved Password to delete it explicitly.</td></tr>
             <tr><td>Group</td><td>The sidebar group containing the connection.</td></tr>
             <tr><td>Favorite</td><td>Shows the connection in the Favorites section.</td></tr>
           </tbody>
         </table>
         <p>Duplicating a connection creates a new connection identifier and safely copies its saved Keychain password. Deleting a connection removes its Keychain password as well.</p>
+        <h3>Import and export</h3>
+        <p>Open the connection-library menu in the toolbar or sidebar, or use the File menu, to import or export your saved library.</p>
+        <ul>
+          <li>A normal <code>.nethriva</code> export contains connection settings, favorite status, groups, and empty groups, but never passwords.</li>
+          <li>Enable <strong>Include saved credentials</strong> to create a password-protected <code>.nethriva-secure</code> archive. The entire archive is encrypted, and its password cannot be recovered.</li>
+          <li>Import shows connection, group, saved-credential, and duplicate counts before changing the current library.</li>
+          <li>For matching connection identifiers, choose whether to keep the existing connection or replace it with the imported record. Imported passwords are saved in the active macOS Keychain profile.</li>
+        </ul>
+        <div class="callout warning"><strong>Protect credential exports like a password vault.</strong> Use a unique, strong archive password and transfer the file through a trusted channel.</div>
+      </section>
+
+      <section id="settings">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Settings and privacy</h2>
+        <p>Choose <strong>Nethriva → Settings…</strong>, press <kbd>⌘,</kbd>, or use the gear button in the main toolbar.</p>
+        <ul>
+          <li><strong>Sidebar:</strong> show or hide host addresses and usernames below connection names.</li>
+          <li><strong>Sessions:</strong> show or hide host addresses and usernames in SSH, Telnet, RDP, and SFTP headers.</li>
+          <li>Username display is off by default in both locations. Changes take effect immediately and are saved for the current development or release profile.</li>
+        </ul>
+        <p>These controls affect labels created by Nethriva. A connection name containing a username, or text displayed by a remote system such as a shell prompt, remains visible until changed at its source.</p>
       </section>
 
       <section id="local-terminal">
@@ -347,6 +370,20 @@
         <p>On first connection, OpenSSH displays the server fingerprint in the terminal. Review it, enter <code>yes</code>, and press Return to add the host to <code>known_hosts</code>. A changed host key is not accepted automatically.</p>
         <div class="callout"><strong>Password characters are invisible by design.</strong> Click the terminal, type or paste the password, and press Return. If the connection has a Keychain password, the password banner provides <strong>Send Saved Password</strong>.</div>
         <p>An ended session displays its exit status and offers a reconnect action without requiring the connection to be reopened from the sidebar.</p>
+      </section>
+
+      <section id="telnet">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Telnet sessions</h2>
+        <p>Telnet sessions use a native TCP connection and render directly inside a SwiftTerm tab. They are intended for legacy switches, appliances, and other devices that do not provide SSH.</p>
+        <ul>
+          <li>Port 23 is selected by default, and any valid custom TCP port can be used.</li>
+          <li>Nethriva negotiates terminal echo, suppress-go-ahead, xterm-compatible terminal type, and window-size updates.</li>
+          <li>Keyboard input, <kbd>⌘V</kbd> paste, secondary-click paste, selection, and terminal resizing work inside the tab.</li>
+          <li>A detected password prompt can show an explicit <strong>Send Saved Password</strong> action.</li>
+          <li>An ended or failed session offers a reconnect control.</li>
+        </ul>
+        <div class="callout warning"><strong>Telnet is not encrypted.</strong> Usernames, passwords, commands, and output can be observed or altered on the network. Use Telnet only on an isolated, trusted management network and prefer SSH whenever possible.</div>
       </section>
 
       <section id="remote-files">
@@ -399,6 +436,7 @@
         <ul>
           <li>Network Level Authentication with username, password, and optional domain.</li>
           <li><code>DOMAIN\username</code> is separated into the correct domain and account automatically.</li>
+          <li>If prompted for RDP credentials, optionally select <strong>Save credentials in Keychain</strong>. Nethriva saves them only after the remote desktop connects; failed or cancelled logins are not saved. The checkbox is off by default and does not apply to gateway or smart-card prompts.</li>
           <li>Optional Remote Desktop Gateway host and gateway username.</li>
           <li>Optional administrative session.</li>
           <li>Automatic reconnection with a configurable retry limit.</li>
@@ -442,7 +480,7 @@
             <tr><td>Open Nethriva Help</td><td><kbd>⌘?</kbd> or Help → Nethriva Help</td></tr>
             <tr><td>Open selected connection</td><td><kbd>⌘O</kbd></td></tr>
             <tr><td>Open SFTP for selected SSH connection</td><td><kbd>⌘⇧U</kbd></td></tr>
-            <tr><td>Paste into local or SSH terminal</td><td><kbd>⌘V</kbd></td></tr>
+            <tr><td>Paste into local, SSH, or Telnet terminal</td><td><kbd>⌘V</kbd></td></tr>
             <tr><td>Terminal pointing-device paste</td><td>Secondary-click or two-finger click</td></tr>
             <tr><td>Windows common edit operations</td><td><kbd>⌘C</kbd>, <kbd>⌘X</kbd>, <kbd>⌘V</kbd>, <kbd>⌘A</kbd></td></tr>
             <tr><td>Windows context menu</td><td>Secondary-click or two-finger click inside RDP</td></tr>
@@ -455,12 +493,16 @@
         <a class="top-link" href="#top">Back to top</a>
         <h2>Security and privacy</h2>
         <ul>
-          <li>Saved passwords are generic-password items in macOS Keychain, keyed by connection UUID.</li>
+          <li>Saved passwords are device-local generic-password items in macOS Keychain, keyed by connection UUID and available only while this Mac is unlocked.</li>
           <li>Password values are not stored in the connection record and are redacted from application-visible RDP argument logs.</li>
           <li>SSH host identity is protected by the current user's OpenSSH <code>known_hosts</code> checks.</li>
+          <li>SFTP passwords are delivered to the helper through a private pipe, not process arguments or environment variables, and unsafe control characters are rejected from commands.</li>
+          <li>Telnet provides no encryption or host-identity verification and must be treated as a legacy, trusted-network-only protocol.</li>
           <li>RDP credentials are supplied to the embedded native client without appearing in a separate RDP process list.</li>
           <li>Sensitive RDP redirects are disabled unless enabled in that connection's settings.</li>
           <li>Connection and group records remain in the current macOS user's local preferences.</li>
+          <li>Plain connection exports cannot contain passwords. Credential exports encrypt the complete archive with password-based AES-256-GCM and are saved for current-user access only.</li>
+          <li>Xcode Debug builds use a separate development connection library and Keychain service, so personal Release-profile records do not appear in test builds.</li>
           <li>Nethriva does not require a hosted account and does not provide cloud synchronization, telemetry, or a hosted relay in this release.</li>
         </ul>
         <p>App Sandbox is disabled because Nethriva must launch local shell, SSH, and SFTP processes and access user-selected files. A distributed build still requires appropriate signing, hardened-runtime, notarization, and entitlement review.</p>
@@ -470,12 +512,15 @@
         <a class="top-link" href="#top">Back to top</a>
         <h2>Troubleshooting</h2>
         <details open><summary>I cannot type or paste into SSH</summary><div>Click inside the terminal first. Password input is invisible, so type or paste it and press Return even though no characters appear. Command-V pastes; secondary-click also pastes into terminal sessions.</div></details>
+        <details><summary>Telnet does not connect or accept keyboard input</summary><div>Confirm the device exposes Telnet on the configured port and that no firewall blocks it, then click inside the terminal before typing. Use Telnet only on a trusted management network because its traffic is unencrypted.</div></details>
         <details><summary>SSH keeps asking whether the host is authentic</summary><div>Verify the displayed fingerprint, enter <code>yes</code>, and ensure the current user can write to <code>~/.ssh/known_hosts</code>. Investigate changed-host warnings instead of replacing the key automatically.</div></details>
         <details><summary>The remote file tree is empty or slow</summary><div>Connect through SSH and approve the host key first. Confirm the server enables SFTP and that the account can list the directory. The first connection performs DNS, trust, and authentication work; later operations reuse its authenticated control connection.</div></details>
         <details><summary>SFTP reports authentication, timeout, or permission errors</summary><div>Check the connection's authentication mode, identity file, agent, jump host, port, and username. Confirm the server's SFTP subsystem is enabled and the account has permission for the requested path. Use the error action to open the associated SSH session when host trust requires attention.</div></details>
         <details><summary>RDP says logon failed</summary><div>Windows rejected the supplied account information. Re-enter the password and verify the domain. Use <code>DOMAIN\username</code> or the dedicated Domain field, and confirm the account is allowed to use Remote Desktop with Network Level Authentication.</div></details>
         <details><summary>RDP is too small, too large, or pointer clicks are offset</summary><div>Resize the Nethriva window once and allow Windows to apply the layout. Use Comfortable, Larger, or Largest interface scaling. The app sends logical tab dimensions and recalculates them when the sidebar changes.</div></details>
         <details><summary>RDP clipboard or file drop does not work</summary><div>Enable Share clipboard and check the Windows host's clipboard-redirection policy. For files, drop directly over the intended Windows desktop or Explorer view, or copy the items in Finder and choose the paste action.</div></details>
+        <details><summary>My connections disappeared in an Xcode Debug build</summary><div>Debug and Release intentionally use separate connection libraries and Keychain services. This keeps personal records out of development builds. Run the Release configuration to access the existing Release library, export it, then import it into Debug only if you want a development copy.</div></details>
+        <details><summary>I cannot open an encrypted connection archive</summary><div>Confirm that you entered the exact export password. Nethriva cannot recover an archive password. A wrong password or a modified archive is rejected without importing partial data.</div></details>
         <details><summary>An RDP certificate is rejected</summary><div>Use a certificate trusted by the Mac when Require Valid Certificate is selected. Trust on First Use is appropriate when you can verify the initial certificate. Ignore Certificate Warnings is available for controlled environments but removes certificate-substitution protection.</div></details>
         <details><summary>The help page or package resources are missing</summary><div>In Xcode choose Product → Clean Build Folder, confirm the Nethriva scheme and My Mac destination, and build again. The help file must appear in the app target's Copy Bundle Resources phase.</div></details>
       </section>
@@ -487,11 +532,12 @@
           <li>The bundled RDP runtime is currently Apple-silicon only.</li>
           <li>Recursive deletion of non-empty remote SFTP directories is disabled.</li>
           <li>SFTP does not automatically trust unknown SSH host keys.</li>
+          <li>Telnet has no transport encryption or server-identity verification.</li>
           <li>Connection and group data are local and do not synchronize between Macs.</li>
-          <li>There is no connection import/export UI, team vault, or credential-sharing service.</li>
+          <li>There is no automatic library synchronization, team vault, or credential-sharing service.</li>
           <li>RDP redirection features depend on the remote host's Windows policy and configuration.</li>
           <li>A separate stored Remote Desktop Gateway password field is not currently available.</li>
-          <li>Developer ID distribution signing, notarization, automatic updates, and an installer remain future deployment work.</li>
+          <li>Developer ID distribution signing, notarization, automatic updates, and a polished installer remain future deployment work.</li>
         </ul>
       </section>
 
@@ -501,7 +547,7 @@
         <p>This manual is bundled with Nethriva and works without an internet connection. Open it from the toolbar's question-mark button, choose <strong>Help → Nethriva Help</strong>, or press <kbd>⌘?</kbd>.</p>
         <p>Use the search field to highlight matching terms. Repeated searches start from the beginning of the manual and show every match.</p>
         <p>Nethriva is free and open-source software. If it saves you time, you can optionally leave a <a href="https://ko-fi.com/vsharapov">one-time tip through Ko-fi</a>. The Help menu provides the same link.</p>
-        <p class="muted">Manual version 0.10.0 · Covers local terminal, SSH, remote file tree, SFTP, embedded RDP, connection management, security, and troubleshooting.</p>
+        <p class="muted">Manual version 0.11.0 · Covers local terminal, SSH, Telnet, remote file tree, SFTP, embedded RDP, connection import/export, security, and troubleshooting.</p>
       </section>
 
       <footer>Nethriva Help · Offline documentation bundled with the application</footer>

@@ -13,6 +13,8 @@ struct ConnectionEditorView: View {
     @State private var port: Int
     @State private var username: String
     @State private var password = ""
+    @State private var hasSavedPassword = false
+    @State private var removeSavedPassword = false
     @State private var group: String
     @State private var isFavorite: Bool
     @State private var sshAuthentication: SSHAuthenticationMode
@@ -97,6 +99,7 @@ struct ConnectionEditorView: View {
 
                 Picker("Protocol", selection: $kind) {
                     Text("SSH").tag(ConnectionKind.ssh)
+                    Text("Telnet").tag(ConnectionKind.telnet)
                     Text("RDP").tag(ConnectionKind.rdp)
                 }
                 .onChange(of: kind) { _, newValue in
@@ -113,6 +116,34 @@ struct ConnectionEditorView: View {
 
                 SecureField(connection == nil ? "Password (optional)" : "New password (leave blank to keep current)", text: $password)
                     .textContentType(.password)
+                    .onChange(of: password) { _, newValue in
+                        if !newValue.isEmpty {
+                            removeSavedPassword = false
+                        }
+                    }
+
+                if connection != nil && hasSavedPassword {
+                    HStack {
+                        if removeSavedPassword {
+                            Label("Saved password will be removed when you save.", systemImage: "key.slash")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Spacer()
+                            Button("Undo") {
+                                removeSavedPassword = false
+                            }
+                        } else {
+                            Label("A password is stored in Keychain.", systemImage: "key.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Remove Saved Password", role: .destructive) {
+                                password = ""
+                                removeSavedPassword = true
+                            }
+                        }
+                    }
+                }
 
                 HStack {
                     TextField("Group", text: $group)
@@ -173,6 +204,15 @@ struct ConnectionEditorView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                if kind == .telnet {
+                    Label(
+                        "Telnet is unencrypted. Credentials and session data can be read by anyone able to observe the network path. Use it only on trusted management networks.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
                 }
 
                 if kind == .rdp {
@@ -270,9 +310,7 @@ struct ConnectionEditorView: View {
             Divider()
 
             HStack {
-                Text(kind == .ssh
-                    ? "macOS OpenSSH uses your SSH config and keys. Saved passwords remain in Keychain."
-                    : "RDP uses FreeRDP's native macOS SDL client. Saved passwords remain in Keychain.")
+                Text(footerText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -287,7 +325,14 @@ struct ConnectionEditorView: View {
             }
             .padding()
         }
-        .frame(width: 600, height: kind == .rdp ? 760 : (isShowingSSHOptions ? 650 : 500))
+        .frame(
+            width: 600,
+            height: kind == .rdp ? 760 : (kind == .ssh && isShowingSSHOptions ? 650 : 520)
+        )
+        .task {
+            guard let connection else { return }
+            hasSavedPassword = (try? appState.password(for: connection)) != nil
+        }
     }
 
     private var isValid: Bool {
@@ -346,7 +391,11 @@ struct ConnectionEditorView: View {
             if connection == nil {
                 try appState.add(updatedConnection, password: password)
             } else {
-                try appState.update(updatedConnection, password: password)
+                try appState.update(
+                    updatedConnection,
+                    password: password,
+                    removeSavedPassword: removeSavedPassword
+                )
             }
             dismiss()
         } catch {
@@ -357,6 +406,19 @@ struct ConnectionEditorView: View {
     private func normalizedOptional(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var footerText: String {
+        switch kind {
+        case .ssh:
+            "macOS OpenSSH uses your SSH config and keys. Saved passwords remain in Keychain."
+        case .telnet:
+            "Telnet is intended only for legacy devices on trusted management networks."
+        case .rdp:
+            "RDP uses the bundled FreeRDP runtime. Saved passwords remain in Keychain."
+        case .localShell:
+            "Local terminal sessions run on this Mac."
+        }
     }
 
     private func chooseIdentityFile() {

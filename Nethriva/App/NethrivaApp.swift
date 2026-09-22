@@ -3,11 +3,13 @@ import SwiftUI
 @main
 struct NethrivaApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var settings = AppSettings()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(settings)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.titleBar)
@@ -26,6 +28,22 @@ struct NethrivaApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
                 .disabled(appState.selectedConnection?.kind != .ssh)
+
+                Divider()
+
+                Button("Import Connections…") {
+                    appState.chooseConnectionArchiveToImport()
+                }
+
+                Button("Export Connections…") {
+                    appState.requestConnectionExport()
+                }
+
+                Divider()
+
+                Button("Export Redacted Diagnostics…") {
+                    appState.exportDiagnostics()
+                }
             }
         }
 
@@ -34,5 +52,10 @@ struct NethrivaApp: App {
         }
         .defaultSize(width: 1040, height: 760)
         .windowResizability(.contentMinSize)
+
+        Settings {
+            NethrivaSettingsView()
+                .environmentObject(settings)
+        }
     }
 }

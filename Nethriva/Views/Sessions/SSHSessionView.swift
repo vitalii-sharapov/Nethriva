@@ -7,6 +7,7 @@ import SwiftUI
 /// known_hosts entries, ssh-agent, and interactive auth behavior as Terminal.
 struct SSHSessionView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settings: AppSettings
     @StateObject private var inputController = OpenSSHInputController()
 
     let connection: RemoteConnection
@@ -20,8 +21,24 @@ struct SSHSessionView: View {
         HSplitView {
             SSHFileTreeView(connection: connection)
 
-            terminalPane
-                .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Label("SSH", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(.headline)
+                    if let endpoint = settings.sessionEndpoint(for: connection) {
+                        Text(endpoint)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .background(.bar)
+                Divider()
+                terminalPane
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -184,10 +201,7 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
         arguments += SSHConnectionReuse.arguments
         arguments.append(destination)
 
-        terminalView.feed(text: "Connecting to \(connection.endpointDescription) with macOS OpenSSH…\r\n")
-        if let jumpHost = normalized(connection.sshJumpHost) {
-            terminalView.feed(text: "Jump host: \(jumpHost)\r\n")
-        }
+        terminalView.feed(text: "Connecting with macOS OpenSSH…\r\n")
         if let identityFile = normalized(connection.sshIdentityFile) {
             terminalView.feed(text: "Identity: \((identityFile as NSString).lastPathComponent)\r\n")
         }

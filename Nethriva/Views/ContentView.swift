@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var appState: AppState
     @State private var editorRequest: ConnectionEditorRequest?
 
     var body: some View {
@@ -24,7 +26,17 @@ struct ContentView: View {
                 initialGroup: request.initialGroup
             )
         }
+        .sheet(item: $appState.connectionTransferRequest) { request in
+            ConnectionTransferView(request: request)
+                .environmentObject(appState)
+        }
         .toolbar {
+            ToolbarItem {
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+            }
+
             ToolbarItem {
                 Button {
                     openWindow(id: NethrivaWindow.help)
@@ -41,6 +53,36 @@ struct ContentView: View {
                     Label("New Connection", systemImage: "plus")
                 }
             }
+
+            ToolbarItem {
+                Menu {
+                    Button {
+                        appState.chooseConnectionArchiveToImport()
+                    } label: {
+                        Label("Import Connections…", systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        appState.requestConnectionExport()
+                    } label: {
+                        Label("Export Connections…", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Label("Connection Library", systemImage: "arrow.left.arrow.right")
+                }
+                .help("Import or export the connection library")
+            }
+        }
+        .alert("Nethriva Data Notice", isPresented: Binding(
+            get: { appState.persistenceNotice != nil },
+            set: { if !$0 { appState.persistenceNotice = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appState.persistenceNotice ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            appState.shutdownSSHTransports()
         }
     }
 }

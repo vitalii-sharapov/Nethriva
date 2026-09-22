@@ -53,6 +53,8 @@ struct SessionWorkspaceView: View {
                 LocalTerminalSessionView()
             case .ssh:
                 SSHSessionView(connection: tab.connection)
+            case .telnet:
+                TelnetSessionView(connection: tab.connection)
             case .rdp:
                 RDPSessionView(connection: tab.connection)
             }

@@ -25,6 +25,7 @@
 @interface PasswordDialog ()
 
 @property BOOL modalCode;
+@property BOOL saveCredentials;
 
 @end
 
@@ -38,39 +39,15 @@
 @synthesize password;
 @synthesize domain;
 @synthesize modalCode;
+@synthesize saveCredentials;
+@synthesize allowsSaving;
 
 - (id)init
 {
-	return [self initWithWindowNibName:@"PasswordDialog"];
+	return [super initWithWindow:nil];
 }
 
-- (void)windowDidLoad
-{
-	[super windowDidLoad];
-	// Implement this method to handle any initialization after your window controller's window has
-	// been loaded from its nib file.
-	[self.window setTitle:self.serverHostname];
-	[self.messageLabel
-	    setStringValue:[NSString stringWithFormat:@"Authenticate to %@", self.serverHostname]];
-	NSMutableString *domainUser = [[NSMutableString alloc] initWithString:@""];
-
-	if (self.domain != nil &&
-	    [[self.domain stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]
-	        length] > 0)
-	{
-		[domainUser appendFormat:@"%@\\", self.domain];
-	}
-
-	if (self.username != nil)
-	{
-		[domainUser appendString:self.username];
-		[self.window makeFirstResponder:self.passwordText];
-	}
-
-	[self.usernameText setStringValue:domainUser];
-}
-
-- (IBAction)onOK:(NSObject *)sender
+- (void)captureCredentials
 {
 	char *submittedUser = nullptr;
 	char *submittedDomain = nullptr;
@@ -94,6 +71,11 @@
 	self.password = self.passwordText.stringValue;
 	free(submittedUser);
 	free(submittedDomain);
+}
+
+- (IBAction)onOK:(NSObject *)sender
+{
+	[self captureCredentials];
 	[NSApp stopModalWithCode:TRUE];
 }
 
@@ -104,24 +86,76 @@
 
 - (BOOL)runModal:(NSWindow *)mainWindow
 {
-	if ([mainWindow respondsToSelector:@selector(beginSheet:completionHandler:)])
-	{
-		[mainWindow beginSheet:self.window completionHandler:nil];
-		self.modalCode = [NSApp runModalForWindow:self.window];
-		[mainWindow endSheet:self.window];
-	}
-	else
-	{
-		[NSApp beginSheet:self.window
-		    modalForWindow:mainWindow
-		     modalDelegate:nil
-		    didEndSelector:nil
-		       contextInfo:nil];
-		self.modalCode = [NSApp runModalForWindow:self.window];
-		[NSApp endSheet:self.window];
-	}
+	(void)mainWindow;
+	// The bridge is hosted in Nethriva, not MacFreeRDP.app, so its original
+	// PasswordDialog.nib is unavailable. A nib-backed sheet has a nil window
+	// here and raises "cannot run nil sheetWindow" during authentication.
+	NSAlert *alert = [[NSAlert alloc] init];
+	alert.messageText = @"Remote Desktop Authentication";
+	alert.informativeText = [NSString stringWithFormat:@"Enter credentials for %@.",
+	                         self.serverHostname ?: @"this server"];
+	[alert addButtonWithTitle:@"Connect"];
+	[alert addButtonWithTitle:@"Cancel"];
 
-	[self.window orderOut:nil];
+	const CGFloat saveRowHeight = self.allowsSaving ? 32 : 0;
+	NSView *fields = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 360, 92 + saveRowHeight)];
+	NSTextField *userLabel =
+	    [[NSTextField alloc] initWithFrame:NSMakeRect(0, 60 + saveRowHeight, 85, 22)];
+	userLabel.stringValue = @"Username:";
+	userLabel.bezeled = NO;
+	userLabel.drawsBackground = NO;
+	userLabel.editable = NO;
+	userLabel.selectable = NO;
+	[fields addSubview:userLabel];
+	[userLabel release];
+
+	NSTextField *userField =
+	    [[NSTextField alloc] initWithFrame:NSMakeRect(88, 58 + saveRowHeight, 272, 26)];
+	if (self.domain.length > 0)
+		userField.stringValue = [NSString stringWithFormat:@"%@\\%@", self.domain,
+		                         self.username ?: @""];
+	else
+		userField.stringValue = self.username ?: @"";
+	[fields addSubview:userField];
+	self.usernameText = userField;
+	[userField release];
+
+	NSTextField *passwordLabel =
+	    [[NSTextField alloc] initWithFrame:NSMakeRect(0, 22 + saveRowHeight, 85, 22)];
+	passwordLabel.stringValue = @"Password:";
+	passwordLabel.bezeled = NO;
+	passwordLabel.drawsBackground = NO;
+	passwordLabel.editable = NO;
+	passwordLabel.selectable = NO;
+	[fields addSubview:passwordLabel];
+	[passwordLabel release];
+
+	NSSecureTextField *passwordField =
+	    [[NSSecureTextField alloc] initWithFrame:NSMakeRect(88, 20 + saveRowHeight, 272, 26)];
+	passwordField.stringValue = self.password ?: @"";
+	[fields addSubview:passwordField];
+	self.passwordText = passwordField;
+	[passwordField release];
+	NSButton *saveCheckbox = nil;
+	if (self.allowsSaving)
+	{
+		saveCheckbox = [NSButton checkboxWithTitle:@"Save credentials in Keychain"
+		                                        target:nil action:nil];
+		saveCheckbox.frame = NSMakeRect(88, 8, 272, 26);
+		saveCheckbox.state = NSControlStateValueOff;
+		[fields addSubview:saveCheckbox];
+	}
+	alert.accessoryView = fields;
+	[fields release];
+	[alert.window makeFirstResponder:self.username.length > 0 ? passwordField : userField];
+
+	self.modalCode = [alert runModal] == NSAlertFirstButtonReturn;
+	if (self.modalCode)
+	{
+		self.saveCredentials = saveCheckbox && saveCheckbox.state == NSControlStateValueOn;
+		[self captureCredentials];
+	}
+	[alert release];
 	return self.modalCode;
 }
 

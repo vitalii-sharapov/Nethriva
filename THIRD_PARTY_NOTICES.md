@@ -7,13 +7,6 @@ Nethriva incorporates third-party open-source software. Each component remains s
 The exact dependency versions and source locations are recorded in `Nethriva.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`.
 
 - SwiftTerm
-- SwiftNIO
-- SwiftNIO SSH
-- Swift Crypto
-- Swift ASN.1
-- Swift Atomics
-- Swift Collections
-- Swift System
 - Swift Argument Parser
 
 Xcode retrieves the corresponding license files with each package source checkout.

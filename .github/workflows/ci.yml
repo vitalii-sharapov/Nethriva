@@ -1,0 +1,50 @@
+name: Build and Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Resolve packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Nethriva.xcodeproj \
+            -scheme Nethriva
+
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -project Nethriva.xcodeproj \
+            -scheme Nethriva \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/NethrivaDerivedData" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify Release build
+        run: |
+          xcodebuild build \
+            -project Nethriva.xcodeproj \
+            -scheme Nethriva \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/NethrivaReleaseData" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Validate bundled RDP bridge
+        run: |
+          test -f Nethriva/Resources/FreeRDP/Frameworks/libNethrivaRDP.dylib
+          nm -gU Nethriva/Resources/FreeRDP/Frameworks/libNethrivaRDP.dylib |
+            grep NethrivaRDPConfigureOpenSSL

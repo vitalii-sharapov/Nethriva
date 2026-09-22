@@ -3,6 +3,7 @@ import Foundation
 enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
     case localShell
     case ssh
+    case telnet
     case rdp
 
     var id: String { rawValue }
@@ -11,6 +12,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .localShell: "Local"
         case .ssh: "SSH"
+        case .telnet: "Telnet"
         case .rdp: "RDP"
         }
     }
@@ -19,6 +21,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .localShell: "terminal"
         case .ssh: "chevron.left.forwardslash.chevron.right"
+        case .telnet: "network"
         case .rdp: "display"
         }
     }
@@ -27,6 +30,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .localShell: 0
         case .ssh: 22
+        case .telnet: 23
         case .rdp: 3389
         }
     }

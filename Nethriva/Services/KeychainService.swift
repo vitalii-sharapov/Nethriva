@@ -22,12 +22,18 @@ enum KeychainError: LocalizedError {
 }
 
 final class KeychainService: CredentialVault {
-    static let shared = KeychainService()
+    static let shared = KeychainService(
+        service: NethrivaDataProfile.credentialService,
+        legacyServices: NethrivaDataProfile.legacyCredentialServices
+    )
 
-    private let service = "com.vitalii.nethriva.credentials"
-    private let legacyServices = ["com.remotedeck.credentials"]
+    private let service: String
+    private let legacyServices: [String]
 
-    private init() {}
+    init(service: String, legacyServices: [String] = []) {
+        self.service = service
+        self.legacyServices = legacyServices
+    }
 
     func save(password: String, for connectionID: UUID) throws {
         let account = connectionID.uuidString
@@ -36,7 +42,10 @@ final class KeychainService: CredentialVault {
 
         let updateStatus = SecItemUpdate(
             baseQuery as CFDictionary,
-            [kSecValueData as String: data] as CFDictionary
+            [
+                kSecValueData as String: data,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            ] as CFDictionary
         )
 
         if updateStatus == errSecSuccess { return }
@@ -46,7 +55,7 @@ final class KeychainService: CredentialVault {
 
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw KeychainError.unexpectedStatus(addStatus)
@@ -57,6 +66,7 @@ final class KeychainService: CredentialVault {
         let account = connectionID.uuidString
 
         if let password = try password(account: account, service: service) {
+            try save(password: password, for: connectionID)
             return password
         }
 

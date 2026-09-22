@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RDPSessionView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settings: AppSettings
     @StateObject private var controller: RDPSessionController
 
     let connection: RemoteConnection
@@ -18,9 +19,11 @@ struct RDPSessionView: View {
                 Label("RDP", systemImage: "display")
                     .font(.headline)
 
-                Text(connection.endpointDescription)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                if let endpoint = settings.sessionEndpoint(for: connection) {
+                    Text(endpoint)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
@@ -61,6 +64,13 @@ struct RDPSessionView: View {
                 Label(controller.compactStatus, systemImage: controller.statusIcon)
                     .font(.caption)
                     .foregroundStyle(controller.statusColor)
+
+                if let credentialSaveError = controller.credentialSaveError {
+                    Label("Credentials not saved", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .help(credentialSaveError)
+                }
 
                 if controller.canDisconnect {
                     Button("Disconnect", role: .destructive) {
@@ -108,7 +118,12 @@ struct RDPSessionView: View {
         }
         .task {
             do {
-                controller.configure(password: try appState.password(for: connection))
+                controller.configure(
+                    password: try appState.password(for: connection),
+                    saveCredentials: { credentials in
+                        try appState.saveRDPLogin(credentials, for: connection.id)
+                    }
+                )
             } catch {
                 controller.showError("Could not read the saved password: \(error.localizedDescription)")
             }
@@ -298,11 +313,13 @@ final class RDPSessionController: ObservableObject {
     @Published private(set) var displayScale: Int
     @Published private(set) var isDropTargeted = false
     @Published private(set) var transferMessage: String?
+    @Published private(set) var credentialSaveError: String?
 
-    private let connection: RemoteConnection
+    private var connection: RemoteConnection
     private weak var container: EmbeddedRDPContainerView?
     private var session: EmbeddedRDPSession?
     private var password: String?
+    private var saveCredentials: ((RDPCredentialCandidate) throws -> RemoteConnection)?
     private var credentialsReady = false
     private var viewport: CGSize?
     private var monitorTask: Task<Void, Never>?
@@ -382,8 +399,12 @@ final class RDPSessionController: ObservableObject {
         }
     }
 
-    func configure(password: String?) {
+    func configure(
+        password: String?,
+        saveCredentials: @escaping (RDPCredentialCandidate) throws -> RemoteConnection
+    ) {
         self.password = password
+        self.saveCredentials = saveCredentials
         credentialsReady = true
         startIfReady()
     }
@@ -466,6 +487,7 @@ final class RDPSessionController: ObservableObject {
     func reconnect() {
         shutDown(markStopped: false)
         phase = .idle
+        credentialSaveError = nil
         startIfReady()
     }
 
@@ -478,7 +500,8 @@ final class RDPSessionController: ObservableObject {
     }
 
     private func startIfReady() {
-        guard session == nil,
+        guard phase == .idle,
+              session == nil,
               credentialsReady,
               let container,
               let viewport else { return }
@@ -516,6 +539,18 @@ final class RDPSessionController: ObservableObject {
                   self.session === monitoredSession {
                 switch monitoredSession.connectionState {
                 case .connected:
+                    if let credentials = monitoredSession.takeCredentialsToSave() {
+                        do {
+                            if let saveCredentials {
+                                let savedConnection = try saveCredentials(credentials)
+                                self.connection = savedConnection
+                                self.password = credentials.password
+                            }
+                        } catch {
+                            self.credentialSaveError =
+                                "The RDP session connected, but the credentials could not be saved: \(error.localizedDescription)"
+                        }
+                    }
                     if self.phase != .running {
                         self.phase = .running
                         monitoredSession.focus()

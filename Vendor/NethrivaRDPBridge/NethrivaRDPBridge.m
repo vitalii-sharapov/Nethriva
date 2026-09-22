@@ -2,6 +2,8 @@
 
 #import <freerdp/client.h>
 #import <freerdp/client/cmdline.h>
+#import <openssl/provider.h>
+#import <openssl/crypto.h>
 #import <winpr/crt.h>
 
 #import "MRDPView.h"
@@ -14,11 +16,28 @@ typedef struct
 	MRDPView *view;
 	int argc;
 	char **argv;
-} RemoteDeckRDPSession;
+} NethrivaRDPSession;
 
-__attribute__((visibility("default"))) void *RemoteDeckRDPCreateView(double width, double height)
+static OSSL_PROVIDER *NethrivaDefaultProvider = NULL;
+static OSSL_PROVIDER *NethrivaLegacyProvider = NULL;
+
+__attribute__((visibility("default"))) int NethrivaRDPConfigureOpenSSL(
+    const char *providerDirectory)
 {
-	RemoteDeckRDPSession *session = calloc(1, sizeof(RemoteDeckRDPSession));
+    if (!providerDirectory)
+        return 0;
+    if (OSSL_PROVIDER_set_default_search_path(NULL, providerDirectory) != 1)
+        return 0;
+    if (!NethrivaDefaultProvider)
+        NethrivaDefaultProvider = OSSL_PROVIDER_load(NULL, "default");
+    if (!NethrivaLegacyProvider)
+        NethrivaLegacyProvider = OSSL_PROVIDER_load(NULL, "legacy");
+    return (NethrivaDefaultProvider && NethrivaLegacyProvider) ? 1 : 0;
+}
+
+__attribute__((visibility("default"))) void *NethrivaRDPCreateView(double width, double height)
+{
+	NethrivaRDPSession *session = calloc(1, sizeof(NethrivaRDPSession));
 	if (!session)
 		return NULL;
 
@@ -27,13 +46,13 @@ __attribute__((visibility("default"))) void *RemoteDeckRDPCreateView(double widt
 	return session;
 }
 
-__attribute__((visibility("default"))) void *RemoteDeckRDPGetView(void *opaqueSession)
+__attribute__((visibility("default"))) void *NethrivaRDPGetView(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	return session ? session->view : NULL;
 }
 
-static void RemoteDeckRDPFreeArguments(RemoteDeckRDPSession *session)
+static void NethrivaRDPFreeArguments(NethrivaRDPSession *session)
 {
 	if (!session || !session->argv)
 		return;
@@ -45,10 +64,10 @@ static void RemoteDeckRDPFreeArguments(RemoteDeckRDPSession *session)
 	session->argc = 0;
 }
 
-__attribute__((visibility("default"))) int RemoteDeckRDPStart(
+__attribute__((visibility("default"))) int NethrivaRDPStart(
 	void *opaqueSession, int argumentCount, const char *const *arguments)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->view || argumentCount < 0)
 		return -1;
 
@@ -70,7 +89,7 @@ __attribute__((visibility("default"))) int RemoteDeckRDPStart(
 	session->argv = calloc((size_t)session->argc, sizeof(char *));
 	if (!session->argv)
 		return -4;
-	session->argv[0] = _strdup("RemoteDeck");
+	session->argv[0] = _strdup("Nethriva");
 	for (int index = 0; index < argumentCount; index++)
 		session->argv[index + 1] = _strdup(arguments[index]);
 
@@ -84,15 +103,51 @@ __attribute__((visibility("default"))) int RemoteDeckRDPStart(
 	return freerdp_client_start(session->context);
 }
 
-__attribute__((visibility("default"))) int RemoteDeckRDPIsConnected(void *opaqueSession)
+__attribute__((visibility("default"))) int NethrivaRDPIsConnected(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	return session && session->view ? session->view.is_connected : 0;
 }
 
-__attribute__((visibility("default"))) int RemoteDeckRDPConnectionState(void *opaqueSession)
+// Transfers an opt-in credential candidate to the Swift host exactly once.
+// Call only after the session reaches the connected state. The caller owns
+// the returned C strings and must clear/free them after saving to Keychain.
+__attribute__((visibility("default"))) int NethrivaRDPTakeSavedCredentials(
+	void *opaqueSession, char **username, char **password, char **domain)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
+	if (!session || !session->view || !username || !password || !domain)
+		return 0;
+	*username = NULL;
+	*password = NULL;
+	*domain = NULL;
+	@synchronized(session->view)
+	{
+		if (!session->view->pendingSavedUsername || !session->view->pendingSavedPassword)
+			return 0;
+		*username = session->view->pendingSavedUsername;
+		*password = session->view->pendingSavedPassword;
+		*domain = session->view->pendingSavedDomain;
+		session->view->pendingSavedUsername = NULL;
+		session->view->pendingSavedPassword = NULL;
+		session->view->pendingSavedDomain = NULL;
+	}
+	return 1;
+}
+
+__attribute__((visibility("default"))) void NethrivaRDPFreeCredentialString(char *value,
+                                                                              int isPassword)
+{
+	if (!value)
+		return;
+	if (isPassword)
+		OPENSSL_cleanse(value, strlen(value));
+	free(value);
+}
+
+__attribute__((visibility("default"))) int NethrivaRDPConnectionState(void *opaqueSession)
+{
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->context)
 		return 0;
 	if (session->view.is_connected)
@@ -104,31 +159,31 @@ __attribute__((visibility("default"))) int RemoteDeckRDPConnectionState(void *op
 	return WaitForSingleObject(macContext->common.thread, 0) == WAIT_OBJECT_0 ? -1 : 1;
 }
 
-__attribute__((visibility("default"))) unsigned int RemoteDeckRDPLastError(void *opaqueSession)
+__attribute__((visibility("default"))) unsigned int NethrivaRDPLastError(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->context)
 		return 0;
 	return freerdp_get_last_error(session->context);
 }
 
-static UINT32 RemoteDeckRDPDimension(double value)
+static UINT32 NethrivaRDPDimension(double value)
 {
 	UINT32 dimension = (UINT32)MAX(200.0, MIN(8192.0, value));
 	return dimension & ~1U;
 }
 
-static UINT32 RemoteDeckRDPScale(double value)
+static UINT32 NethrivaRDPScale(double value)
 {
 	const UINT32 scale = (UINT32)value;
 	return (scale == 100 || scale == 140 || scale == 180) ? scale : 100;
 }
 
-__attribute__((visibility("default"))) void RemoteDeckRDPResize(
+__attribute__((visibility("default"))) void NethrivaRDPResize(
 	void *opaqueSession, double width, double height, double desktopWidth, double desktopHeight,
 	double desktopScale)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->view || width < 1 || height < 1)
 		return;
 
@@ -139,9 +194,9 @@ __attribute__((visibility("default"))) void RemoteDeckRDPResize(
 		return;
 	mfContext *macContext = (mfContext *)session->context;
 	[session->view setScrollOffset:0 y:0 w:(int)width h:(int)height];
-	const UINT32 targetWidth = RemoteDeckRDPDimension(desktopWidth);
-	const UINT32 targetHeight = RemoteDeckRDPDimension(desktopHeight);
-	const UINT32 targetScale = RemoteDeckRDPScale(desktopScale);
+	const UINT32 targetWidth = NethrivaRDPDimension(desktopWidth);
+	const UINT32 targetHeight = NethrivaRDPDimension(desktopHeight);
+	const UINT32 targetScale = NethrivaRDPScale(desktopScale);
 	if (!macContext->displayControlReady || !macContext->disp ||
 	    !macContext->disp->SendMonitorLayout ||
 	    (macContext->lastDesktopWidth == targetWidth &&
@@ -166,24 +221,24 @@ __attribute__((visibility("default"))) void RemoteDeckRDPResize(
 	}
 }
 
-__attribute__((visibility("default"))) void RemoteDeckRDPFocus(void *opaqueSession)
+__attribute__((visibility("default"))) void NethrivaRDPFocus(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (session && session->view.window)
 		[session->view claimKeyboardFocus];
 }
 
-__attribute__((visibility("default"))) void RemoteDeckRDPPaste(void *opaqueSession)
+__attribute__((visibility("default"))) void NethrivaRDPPaste(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (session && session->view)
 		[session->view pasteFromMacClipboard];
 }
 
-__attribute__((visibility("default"))) int RemoteDeckRDPPasteFiles(
+__attribute__((visibility("default"))) int NethrivaRDPPasteFiles(
 	void *opaqueSession, int pathCount, const char *const *paths)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->view || pathCount < 1 || !paths)
 		return 0;
 
@@ -199,10 +254,10 @@ __attribute__((visibility("default"))) int RemoteDeckRDPPasteFiles(
 	return [session->view pasteFilesAtPaths:filePaths] ? 1 : 0;
 }
 
-__attribute__((visibility("default"))) int RemoteDeckRDPPasteFilesAtPoint(
+__attribute__((visibility("default"))) int NethrivaRDPPasteFilesAtPoint(
 	void *opaqueSession, int pathCount, const char *const *paths, double x, double y)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->view || pathCount < 1 || !paths)
 		return 0;
 
@@ -218,9 +273,9 @@ __attribute__((visibility("default"))) int RemoteDeckRDPPasteFilesAtPoint(
 	return [session->view pasteFilesAtPaths:filePaths activateX:x y:y] ? 1 : 0;
 }
 
-__attribute__((visibility("default"))) void RemoteDeckRDPDestroy(void *opaqueSession)
+__attribute__((visibility("default"))) void NethrivaRDPDestroy(void *opaqueSession)
 {
-	RemoteDeckRDPSession *session = opaqueSession;
+	NethrivaRDPSession *session = opaqueSession;
 	if (!session)
 		return;
 
@@ -233,6 +288,6 @@ __attribute__((visibility("default"))) void RemoteDeckRDPDestroy(void *opaqueSes
 	}
 	[session->view removeFromSuperview];
 	[session->view release];
-	RemoteDeckRDPFreeArguments(session);
+	NethrivaRDPFreeArguments(session);
 	free(session);
 }

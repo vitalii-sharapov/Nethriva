@@ -1,25 +1,106 @@
+import Darwin
 import Foundation
 
 enum SSHConnectionReuse {
     private static let controlDirectoryPath: String = {
+        cleanupStaleDirectories()
         let path = "/private/tmp/Nethriva-\(ProcessInfo.processInfo.processIdentifier)"
-        try? FileManager.default.createDirectory(
-            atPath: path,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
+        do {
+            try FileManager.default.createDirectory(
+                atPath: path,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: path)
+        } catch {
+            assertionFailure("Could not prepare the SSH control directory: \(error)")
+        }
         return path
     }()
 
-    /// Reuses one authenticated OpenSSH transport for the terminal and all SFTP
-    /// operations. `%C` is expanded by OpenSSH from the host, port, user, and
-    /// jump-host tuple, so different destinations never share a socket.
+    private static var controlPath: String {
+        "\(controlDirectoryPath)/%C.socket"
+    }
+
     static var arguments: [String] {
-        [
+        _ = controlDirectoryPath
+        return [
             "-o", "ControlMaster=auto",
             "-o", "ControlPersist=600",
-            "-o", "ControlPath=\(controlDirectoryPath)/%C.socket",
+            "-o", "ControlPath=\(controlPath)",
         ]
+    }
+
+    static func controlKey(for connection: RemoteConnection) -> String {
+        [
+            connection.host,
+            String(connection.port),
+            connection.username,
+            connection.sshJumpHost ?? "",
+        ].joined(separator: "\u{1f}")
+    }
+
+    static func shutdown(connection: RemoteConnection) {
+        guard connection.kind == .ssh else { return }
+        DispatchQueue.global(qos: .utility).async {
+            Self.performShutdown(connection: connection)
+        }
+    }
+
+    static func shutdownAll(connections: [RemoteConnection]) {
+        var seen = Set<String>()
+        for connection in connections where connection.kind == .ssh {
+            guard seen.insert(controlKey(for: connection)).inserted else { continue }
+            performShutdown(connection: connection)
+        }
+        try? FileManager.default.removeItem(atPath: controlDirectoryPath)
+    }
+
+    private static func performShutdown(connection: RemoteConnection) {
+        let destination = connection.username.isEmpty
+            ? connection.host
+            : "\(connection.username)@\(connection.host)"
+        var arguments = [
+            "-p", String(connection.port),
+            "-o", "ControlPath=\(controlPath)",
+        ]
+        if let jumpHost = normalized(connection.sshJumpHost) {
+            arguments += ["-J", jumpHost]
+        }
+        arguments += ["-O", "exit", destination]
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+    }
+
+    private static func cleanupStaleDirectories() {
+        let fileManager = FileManager.default
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: URL(fileURLWithPath: "/private/tmp", isDirectory: true),
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        for entry in entries where entry.lastPathComponent.hasPrefix("Nethriva-") {
+            let suffix = entry.lastPathComponent.dropFirst("Nethriva-".count)
+            guard let pid = Int32(suffix), pid != currentPID else { continue }
+            errno = 0
+            let processIsAlive = kill(pid, 0) == 0 || errno == EPERM
+            guard !processIsAlive else { continue }
+            try? fileManager.removeItem(at: entry)
+        }
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -80,6 +161,7 @@ enum SFTPServiceError: LocalizedError {
     case timedOut
     case commandFailed(String)
     case invalidResponse
+    case unsafePath
 
     var errorDescription: String? {
         switch self {
@@ -95,6 +177,8 @@ enum SFTPServiceError: LocalizedError {
             message
         case .invalidResponse:
             "The SFTP server returned a response Nethriva could not understand."
+        case .unsafePath:
+            "The selected file or folder name contains a control character that cannot be sent safely through SFTP."
         }
     }
 }
@@ -213,7 +297,8 @@ final class SFTPService: @unchecked Sendable {
         password: String?,
         commands: [String]
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
+        try Self.validate(commands: commands)
+        return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     continuation.resume(returning: try self.runExpect(
@@ -235,8 +320,10 @@ final class SFTPService: @unchecked Sendable {
     ) throws -> String {
         let process = Process()
         let outputPipe = Pipe()
+        let passwordPipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/expect")
         process.arguments = ["-c", Self.expectScript]
+        process.standardInput = passwordPipe
         process.standardOutput = outputPipe
         process.standardError = outputPipe
 
@@ -245,11 +332,15 @@ final class SFTPService: @unchecked Sendable {
             base: ProcessInfo.processInfo.environment,
             sftpArguments: sftpArguments,
             commands: commands,
-            password: password,
+            passwordByteCount: password?.utf8.count ?? 0,
             executablePath: sftpExecutablePath
         )
 
         try process.run()
+        if let password {
+            try passwordPipe.fileHandleForWriting.write(contentsOf: Data(password.utf8))
+        }
+        try passwordPipe.fileHandleForWriting.close()
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         let output = String(decoding: outputData, as: UTF8.self)
@@ -285,18 +376,29 @@ final class SFTPService: @unchecked Sendable {
         base: [String: String],
         sftpArguments: [String],
         commands: [String],
-        password: String?,
+        passwordByteCount: Int = 0,
         executablePath: String = "/usr/bin/sftp"
     ) -> [String: String] {
         var environment = base
-        environment["NETHRIVA_SFTP_COMMANDS"] = commands.joined(separator: "\n")
-        environment["NETHRIVA_SFTP_PASSWORD"] = password ?? ""
+        environment["NETHRIVA_SFTP_COMMAND_COUNT"] = String(commands.count)
+        for (index, command) in commands.enumerated() {
+            environment["NETHRIVA_SFTP_COMMAND_\(index)"] = command
+        }
+        environment["NETHRIVA_SFTP_PASSWORD_LENGTH"] = String(passwordByteCount)
         environment["NETHRIVA_SFTP_EXECUTABLE"] = executablePath
         environment["NETHRIVA_SFTP_ARG_COUNT"] = String(sftpArguments.count)
         for (index, argument) in sftpArguments.enumerated() {
             environment["NETHRIVA_SFTP_ARG_\(index)"] = argument
         }
         return environment
+    }
+
+    static func validate(commands: [String]) throws {
+        for command in commands {
+            if command.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
+                throw SFTPServiceError.unsafePath
+            }
+        }
     }
 
     private func sftpArguments(for connection: RemoteConnection) -> [String] {
@@ -427,12 +529,22 @@ final class SFTPService: @unchecked Sendable {
     set timeout 60
     log_user 1
     set password_attempts 0
+    fconfigure stdin -translation binary -encoding binary
+    set password_length $env(NETHRIVA_SFTP_PASSWORD_LENGTH)
+    set password ""
+    if {$password_length > 0} {
+        set password [read stdin $password_length]
+    }
     set sftp_args {}
     for {set index 0} {$index < $env(NETHRIVA_SFTP_ARG_COUNT)} {incr index} {
         set key "NETHRIVA_SFTP_ARG_$index"
         lappend sftp_args $env($key)
     }
-    set commands [split $env(NETHRIVA_SFTP_COMMANDS) "\n"]
+    set commands {}
+    for {set index 0} {$index < $env(NETHRIVA_SFTP_COMMAND_COUNT)} {incr index} {
+        set key "NETHRIVA_SFTP_COMMAND_$index"
+        lappend commands $env($key)
+    }
     set command_index 0
     set sent_quit 0
     spawn -noecho $env(NETHRIVA_SFTP_EXECUTABLE) {*}$sftp_args
@@ -452,11 +564,11 @@ final class SFTPService: @unchecked Sendable {
                 puts "__NETHRIVA_AUTH_FAILED__"
                 exit 72
             }
-            if {![info exists env(NETHRIVA_SFTP_PASSWORD)] || $env(NETHRIVA_SFTP_PASSWORD) eq ""} {
+            if {$password eq ""} {
                 puts "__NETHRIVA_PASSWORD_REQUIRED__"
                 exit 73
             }
-            send -- "$env(NETHRIVA_SFTP_PASSWORD)\r"
+            send -- "$password\r"
             exp_continue
         }
         -re "(?i)permission denied" {

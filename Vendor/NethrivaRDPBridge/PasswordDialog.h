@@ -30,6 +30,8 @@
 	NSString *password;
 	NSString *domain;
 	BOOL modalCode;
+	BOOL saveCredentials;
+	BOOL allowsSaving;
 }
 @property(retain) IBOutlet NSTextField *usernameText;
 @property(retain) IBOutlet NSTextField *passwordText;
@@ -43,6 +45,8 @@
 @property(retain) NSString *password;
 @property(retain) NSString *domain;
 @property(readonly) BOOL modalCode;
+@property(readonly) BOOL saveCredentials;
+@property BOOL allowsSaving;
 
 - (BOOL)runModal:(NSWindow *)mainWindow;
 

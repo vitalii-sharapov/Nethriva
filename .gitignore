@@ -2,6 +2,8 @@
 DerivedData/
 .derivedData/
 .build/
+.release-build/
+release-artifacts/
 xcuserdata/
 *.xcuserstate
 work/

@@ -57,6 +57,9 @@
 	int pasteboard_changecount;
 	int pasteboard_format;
 	int is_connected;
+	char *pendingSavedUsername;
+	char *pendingSavedPassword;
+	char *pendingSavedDomain;
 }
 
 - (int)rdpStart:(rdpContext *)rdp_context;

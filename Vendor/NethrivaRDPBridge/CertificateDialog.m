@@ -48,35 +48,7 @@
 
 - (id)init
 {
-	return [self initWithWindowNibName:@"CertificateDialog"];
-}
-
-- (void)windowDidLoad
-{
-	[super windowDidLoad];
-	// Implement this method to handle any initialization after your window controller's window has
-	// been loaded from its nib file.
-	[self.window setTitle:self.serverHostname];
-	if (self.changed)
-		[self.messageLabel setStringValue:[NSString stringWithFormat:@"Changed certificate for %@",
-		                                                             self.serverHostname]];
-	else
-		[self.messageLabel setStringValue:[NSString stringWithFormat:@"New Certificate for %@",
-		                                                             self.serverHostname]];
-
-	if (!self.hostMismatch)
-		[self.textMismatch
-		    setStringValue:[NSString stringWithFormat:
-		                                 @"NOTE: The server name matches the certificate, good."]];
-	else
-		[self.textMismatch
-		    setStringValue:[NSString
-		                       stringWithFormat:
-		                           @"ATTENTION: The common name does not match the server name!"]];
-	[self.textCommonName setStringValue:self.commonName];
-	[self.textFingerprint setStringValue:self.fingerprint];
-	[self.textIssuer setStringValue:self.issuer];
-	[self.textSubject setStringValue:self.subject];
+	return [super initWithWindow:nil];
 }
 
 - (IBAction)onAccept:(NSObject *)sender
@@ -96,24 +68,28 @@
 
 - (int)runModal:(NSWindow *)mainWindow
 {
-	if ([mainWindow respondsToSelector:@selector(beginSheet:completionHandler:)])
-	{
-		[mainWindow beginSheet:self.window completionHandler:nil];
-		self.result = [NSApp runModalForWindow:self.window];
-		[mainWindow endSheet:self.window];
-	}
-	else
-	{
-		[NSApp beginSheet:self.window
-		    modalForWindow:mainWindow
-		     modalDelegate:nil
-		    didEndSelector:nil
-		       contextInfo:nil];
-		self.result = [NSApp runModalForWindow:self.window];
-		[NSApp endSheet:self.window];
-	}
-
-	[self.window orderOut:nil];
+	(void)mainWindow;
+	// This bridge runs inside Nethriva; the upstream certificate nib is not
+	// part of its bundle. Use an app-modal alert so a missing parent window or
+	// nib can never produce a nil-sheet crash.
+	NSAlert *alert = [[NSAlert alloc] init];
+	alert.alertStyle = self.changed || self.hostMismatch ? NSAlertStyleWarning :
+	                                                    NSAlertStyleInformational;
+	alert.messageText = self.changed ? @"Remote desktop certificate changed" :
+	                                  @"Verify remote desktop certificate";
+	alert.informativeText = [NSString stringWithFormat:
+	    @"Server: %@\nCommon name: %@\nSubject: %@\nIssuer: %@\nFingerprint: %@%@",
+	    self.serverHostname ?: @"Unknown", self.commonName ?: @"Unknown",
+	    self.subject ?: @"Unknown", self.issuer ?: @"Unknown",
+	    self.fingerprint ?: @"Unknown",
+	    self.hostMismatch ? @"\n\nWarning: the certificate name does not match the server." : @""];
+	[alert addButtonWithTitle:@"Cancel"];
+	[alert addButtonWithTitle:@"Trust Once"];
+	[alert addButtonWithTitle:@"Trust and Save"];
+	NSInteger response = [alert runModal];
+	self.result = response == NSAlertSecondButtonReturn ? 2 :
+	              response == NSAlertThirdButtonReturn ? 1 : 0;
+	[alert release];
 	return self.result;
 }
 

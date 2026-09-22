@@ -45,6 +45,12 @@ enum EmbeddedRDPError: LocalizedError {
     }
 }
 
+struct RDPCredentialCandidate {
+    let username: String
+    let password: String
+    let domain: String?
+}
+
 @MainActor
 final class EmbeddedRDPSession {
     enum ConnectionState: Int32 {
@@ -55,6 +61,7 @@ final class EmbeddedRDPSession {
     }
 
     private typealias CreateViewFunction = @convention(c) (Double, Double) -> UnsafeMutableRawPointer?
+    private typealias ConfigureOpenSSLFunction = @convention(c) (UnsafePointer<CChar>?) -> Int32
     private typealias GetViewFunction = @convention(c) (UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
     private typealias StartFunction = @convention(c) (
         UnsafeMutableRawPointer?,
@@ -62,6 +69,15 @@ final class EmbeddedRDPSession {
         UnsafePointer<UnsafePointer<CChar>?>?
     ) -> Int32
     private typealias StateFunction = @convention(c) (UnsafeMutableRawPointer?) -> Int32
+    private typealias TakeSavedCredentialsFunction = @convention(c) (
+        UnsafeMutableRawPointer?,
+        UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?,
+        UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?,
+        UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+    ) -> Int32
+    private typealias FreeCredentialStringFunction = @convention(c) (
+        UnsafeMutablePointer<CChar>?, Int32
+    ) -> Void
     private typealias LastErrorFunction = @convention(c) (UnsafeMutableRawPointer?) -> UInt32
     private typealias ResizeFunction = @convention(c) (
         UnsafeMutableRawPointer?,
@@ -93,6 +109,8 @@ final class EmbeddedRDPSession {
 
     private let startFunction: StartFunction
     private let stateFunction: StateFunction
+    private let takeSavedCredentialsFunction: TakeSavedCredentialsFunction
+    private let freeCredentialStringFunction: FreeCredentialStringFunction
     private let lastErrorFunction: LastErrorFunction
     private let resizeFunction: ResizeFunction
     private let focusFunction: FocusFunction
@@ -115,10 +133,9 @@ final class EmbeddedRDPSession {
 
         let libraryURL = runtimeRoot
             .appendingPathComponent("Frameworks")
-            .appendingPathComponent("libRemoteDeckRDP.dylib")
+            .appendingPathComponent("libNethrivaRDP.dylib")
         let providerDirectory = runtimeRoot
             .appendingPathComponent("Frameworks/ossl-modules", isDirectory: true)
-        setenv("OPENSSL_MODULES", providerDirectory.path, 1)
 
         guard FileManager.default.fileExists(atPath: libraryURL.path) else {
             throw EmbeddedRDPError.runtimeMissing
@@ -129,17 +146,31 @@ final class EmbeddedRDPSession {
         }
         self.library = library
 
-        let create: CreateViewFunction = try Self.symbol("RemoteDeckRDPCreateView", from: library)
-        let getView: GetViewFunction = try Self.symbol("RemoteDeckRDPGetView", from: library)
-        startFunction = try Self.symbol("RemoteDeckRDPStart", from: library)
-        stateFunction = try Self.symbol("RemoteDeckRDPConnectionState", from: library)
-        lastErrorFunction = try Self.symbol("RemoteDeckRDPLastError", from: library)
-        resizeFunction = try Self.symbol("RemoteDeckRDPResize", from: library)
-        focusFunction = try Self.symbol("RemoteDeckRDPFocus", from: library)
-        pasteFunction = try Self.symbol("RemoteDeckRDPPaste", from: library)
-        pasteFilesFunction = try Self.symbol("RemoteDeckRDPPasteFiles", from: library)
-        pasteFilesAtPointFunction = try Self.symbol("RemoteDeckRDPPasteFilesAtPoint", from: library)
-        destroyFunction = try Self.symbol("RemoteDeckRDPDestroy", from: library)
+        let configureOpenSSL: ConfigureOpenSSLFunction = try Self.symbol(
+            "NethrivaRDPConfigureOpenSSL",
+            from: library
+        )
+        let providerConfigured = providerDirectory.path.withCString {
+            configureOpenSSL($0)
+        }
+        guard providerConfigured == 1 else {
+            dlclose(library)
+            throw EmbeddedRDPError.loadFailed("The bundled OpenSSL provider could not be initialized.")
+        }
+
+        let create: CreateViewFunction = try Self.symbol("NethrivaRDPCreateView", from: library)
+        let getView: GetViewFunction = try Self.symbol("NethrivaRDPGetView", from: library)
+        startFunction = try Self.symbol("NethrivaRDPStart", from: library)
+        stateFunction = try Self.symbol("NethrivaRDPConnectionState", from: library)
+        takeSavedCredentialsFunction = try Self.symbol("NethrivaRDPTakeSavedCredentials", from: library)
+        freeCredentialStringFunction = try Self.symbol("NethrivaRDPFreeCredentialString", from: library)
+        lastErrorFunction = try Self.symbol("NethrivaRDPLastError", from: library)
+        resizeFunction = try Self.symbol("NethrivaRDPResize", from: library)
+        focusFunction = try Self.symbol("NethrivaRDPFocus", from: library)
+        pasteFunction = try Self.symbol("NethrivaRDPPaste", from: library)
+        pasteFilesFunction = try Self.symbol("NethrivaRDPPasteFiles", from: library)
+        pasteFilesAtPointFunction = try Self.symbol("NethrivaRDPPasteFilesAtPoint", from: library)
+        destroyFunction = try Self.symbol("NethrivaRDPDestroy", from: library)
 
         guard let session = create(viewportSize.width, viewportSize.height),
               let rawView = getView(session) else {
@@ -181,6 +212,26 @@ final class EmbeddedRDPSession {
 
     var lastError: UInt32 {
         lastErrorFunction(session)
+    }
+
+    func takeCredentialsToSave() -> RDPCredentialCandidate? {
+        var username: UnsafeMutablePointer<CChar>?
+        var password: UnsafeMutablePointer<CChar>?
+        var domain: UnsafeMutablePointer<CChar>?
+        guard takeSavedCredentialsFunction(session, &username, &password, &domain) == 1 else {
+            return nil
+        }
+        defer {
+            freeCredentialStringFunction(username, 0)
+            freeCredentialStringFunction(password, 1)
+            freeCredentialStringFunction(domain, 0)
+        }
+        guard let username, let password else { return nil }
+        return RDPCredentialCandidate(
+            username: String(cString: username),
+            password: String(cString: password),
+            domain: domain.map { String(cString: $0) }
+        )
     }
 
     func resize(viewport: CGSize, desktop: CGSize, displayScale: Int) {
