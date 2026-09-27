@@ -2,14 +2,19 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct ConnectionTransferRequest: Identifiable {
-    enum Operation {
+struct ConnectionTransferRequest: Codable, Hashable, Identifiable {
+    enum Operation: Codable, Hashable {
         case export
         case importFile(URL)
     }
 
-    let id = UUID()
+    let id: UUID
     let operation: Operation
+
+    init(operation: Operation) {
+        self.id = UUID()
+        self.operation = operation
+    }
 }
 
 struct ConnectionTransferView: View {
@@ -66,6 +71,7 @@ struct ConnectionTransferView: View {
         }
         .padding(24)
         .frame(width: 560, height: 500)
+        .navigationTitle(title)
         .task { await prepareImportIfNeeded() }
         .onDisappear {
             exportPassword = ""
@@ -96,6 +102,7 @@ struct ConnectionTransferView: View {
             Section("Contents") {
                 LabeledContent("Connections", value: "\(exportConnectionCount)")
                 LabeledContent("Groups", value: "\(appState.groups.count)")
+                LabeledContent("Credential profiles", value: "\(appState.credentialProfiles.count)")
                 Toggle("Include saved credentials", isOn: $includeCredentials)
             }
 
@@ -111,7 +118,7 @@ struct ConnectionTransferView: View {
                 }
             } else {
                 Section {
-                    Text("The export contains connection settings, favorites, groups, and empty groups. It contains no passwords.")
+                    Text("The export contains connections, groups, and credential-profile names, usernames, and domains. It contains no passwords.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -127,7 +134,7 @@ struct ConnectionTransferView: View {
                 Task { await exportConnections() }
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(isBusy || exportConnectionCount == 0 || !exportPasswordIsValid)
+            .disabled(isBusy || (exportConnectionCount == 0 && appState.credentialProfiles.isEmpty) || !exportPasswordIsValid)
         }
     }
 
@@ -177,13 +184,17 @@ struct ConnectionTransferView: View {
         let duplicateCount = archive.connections.filter { imported in
             appState.connections.contains { $0.id == imported.id }
         }.count
+        let duplicateProfileCount = archive.profiles.filter { imported in
+            appState.credentialProfiles.contains { $0.id == imported.id }
+        }.count
 
         return VStack(alignment: .leading, spacing: 16) {
             GroupBox("Archive Preview") {
                 Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 9) {
                     previewRow("Connections", "\(archive.connections.count)")
                     previewRow("Groups", "\(archive.groups.count)")
-                    previewRow("Saved credentials", "\(archive.credentials.count)")
+                    previewRow("Credential profiles", "\(archive.profiles.count)")
+                    previewRow("Saved credentials", "\(archive.credentials.count + archive.profileCredentials.count)")
                     previewRow("Already in library", "\(duplicateCount)")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,8 +211,8 @@ struct ConnectionTransferView: View {
                 }
             }
 
-            if duplicateCount > 0 {
-                Picker("Matching connections", selection: $conflictPolicy) {
+            if duplicateCount + duplicateProfileCount > 0 {
+                Picker("Matching connections or profiles", selection: $conflictPolicy) {
                     ForEach(ConnectionImportConflictPolicy.allCases) { policy in
                         Text(policy.displayName).tag(policy)
                     }

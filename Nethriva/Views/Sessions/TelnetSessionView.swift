@@ -39,7 +39,7 @@ struct TelnetSessionView: View {
                 )
                 .id(sessionID)
 
-                if inputController.isAwaitingPassword, status == .connected {
+                if (inputController.isAwaitingUsername || inputController.isAwaitingPassword), status == .connected {
                     passwordBanner
                 }
 
@@ -74,13 +74,18 @@ struct TelnetSessionView: View {
                 Image(systemName: "key.fill")
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Telnet password entry")
+                    Text(inputController.isAwaitingUsername ? "Telnet username entry" : "Telnet password entry")
                         .font(.callout.weight(.medium))
                     Text("Telnet is unencrypted. Send credentials only on a trusted network.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if inputController.hasSavedPassword {
+                if inputController.isAwaitingUsername && inputController.hasSavedUsername {
+                    Button("Send Saved Username") {
+                        inputController.sendSavedUsername()
+                    }
+                }
+                if inputController.isAwaitingPassword && inputController.hasSavedPassword {
                     Button("Send Saved Password") {
                         inputController.sendSavedPassword()
                     }
@@ -103,6 +108,7 @@ struct TelnetSessionView: View {
     }
 
     private func loadSavedPassword() {
+        inputController.setSavedUsername(connection.username)
         do {
             inputController.setSavedPassword(try appState.password(for: connection))
             credentialError = nil
@@ -284,6 +290,10 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
             if promptTail.localizedCaseInsensitiveContains("password:") {
                 promptTail = ""
                 inputController.passwordPromptDetected()
+            } else if promptTail.localizedCaseInsensitiveContains("username:")
+                || promptTail.localizedCaseInsensitiveContains("login:") {
+                promptTail = ""
+                inputController.usernamePromptDetected()
             }
         }
 
@@ -311,10 +321,20 @@ private final class PasteableNetworkTerminalView: TerminalView {
 }
 
 private final class TelnetInputController: ObservableObject {
+    @Published private(set) var isAwaitingUsername = false
     @Published private(set) var isAwaitingPassword = false
+    private var savedUsername: String?
     private var savedPassword: String?
     private weak var terminalView: TerminalView?
     private var sender: (([UInt8]) -> Void)?
+
+    var hasSavedUsername: Bool {
+        !(savedUsername?.isEmpty ?? true)
+    }
+
+    func setSavedUsername(_ username: String?) {
+        savedUsername = username
+    }
 
     var hasSavedPassword: Bool {
         !(savedPassword?.isEmpty ?? true)
@@ -327,13 +347,22 @@ private final class TelnetInputController: ObservableObject {
     func attach(to terminalView: TerminalView, sender: @escaping ([UInt8]) -> Void) {
         self.terminalView = terminalView
         self.sender = sender
+        isAwaitingUsername = false
         isAwaitingPassword = false
     }
 
     func detach() {
         terminalView = nil
         sender = nil
+        isAwaitingUsername = false
         isAwaitingPassword = false
+    }
+
+    func sendSavedUsername() {
+        guard let savedUsername, !savedUsername.isEmpty else { return }
+        sender?(Array((savedUsername + "\r").utf8))
+        isAwaitingUsername = false
+        if let terminalView { terminalView.window?.makeFirstResponder(terminalView) }
     }
 
     func sendSavedPassword() {
@@ -346,16 +375,24 @@ private final class TelnetInputController: ObservableObject {
     }
 
     func passwordPromptDetected() {
+        isAwaitingUsername = false
         isAwaitingPassword = true
+    }
+
+    func usernamePromptDetected() {
+        isAwaitingPassword = false
+        isAwaitingUsername = true
     }
 
     func inputSubmitted(_ data: ArraySlice<UInt8>) {
         guard data.contains(10) || data.contains(13) else { return }
+        isAwaitingUsername = false
         isAwaitingPassword = false
     }
 
     func processDidEnd() {
         DispatchQueue.main.async { [weak self] in
+            self?.isAwaitingUsername = false
             self?.isAwaitingPassword = false
         }
     }

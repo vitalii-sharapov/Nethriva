@@ -8,12 +8,15 @@ This roadmap records direction rather than promises or deadlines. Priorities sho
 - [x] Connection sidebar, groups, favorites, and tabbed sessions
 - [x] Local terminal and interactive OpenSSH sessions through SwiftTerm
 - [x] Native Telnet sessions for legacy devices with plaintext safety warnings
+- [x] Native Serial sessions with local adapter discovery and configurable line settings
 - [x] Integrated SSH file tree and full SFTP browser
 - [x] Recursive upload/download and drag-and-drop file workflows
 - [x] Embedded FreeRDP desktop sessions
 - [x] Dynamic RDP resolution, pointer, keyboard, clipboard, and file transfer
 - [x] RDP audio, device, gateway, certificate, graphics, scaling, and reconnect settings
 - [x] Keychain credential storage and local connection persistence
+- [x] Reusable Keychain-backed credential profiles for SSH, Telnet, and RDP
+- [x] Nested groups, connection search, multi-selection, and drag-and-drop organization
 - [x] Connection-library import/export with preserved groups and optional encrypted credentials
 - [x] Separate development and release connection data profiles
 - [x] Complete offline help manual
@@ -38,7 +41,7 @@ This roadmap records direction rather than promises or deadlines. Priorities sho
 
 ## Priority 3 — connection management
 
-- [ ] Search and filter saved connections
+- [x] Search and filter saved connections
 - [x] Import and export non-secret connection metadata and optional encrypted credentials
 - [x] Add safe backup and restore guidance
 - [ ] Improve keyboard navigation and accessibility coverage

@@ -234,11 +234,13 @@
         <a href="#quick-start">Quick start</a>
         <a href="#workspace">Workspace</a>
         <a href="#connections">Connections and groups</a>
+        <a href="#credential-profiles">Credential profiles</a>
         <a href="#settings">Settings and privacy</a>
         <div class="section-label">Sessions</div>
         <a href="#local-terminal">Local Terminal</a>
         <a href="#ssh">SSH</a>
         <a href="#telnet">Telnet</a>
+        <a href="#serial">Serial</a>
         <a href="#remote-files">SSH file tree</a>
         <a href="#sftp">SFTP browser</a>
         <a href="#rdp">RDP</a>
@@ -255,8 +257,8 @@
     <main>
       <header class="hero" id="welcome">
         <h1>Nethriva Help</h1>
-        <p>A complete offline guide to organizing connections, using local, SSH, and Telnet terminals, transferring files, and working with embedded Windows desktops.</p>
-        <span class="version">Nethriva 0.11.0 · Help edition</span>
+        <p>A complete offline guide to organizing connections, using local, SSH, Telnet, and Serial terminals, transferring files, and working with embedded Windows desktops.</p>
+        <span class="version">Nethriva 0.12.0 · Help edition</span>
       </header>
 
       <section id="quick-start">
@@ -264,7 +266,7 @@
         <h2>Quick start</h2>
         <ol>
           <li>Choose <strong>Add → New Connection</strong> in the sidebar.</li>
-          <li>Select <strong>SSH</strong>, <strong>Telnet</strong>, or <strong>RDP</strong>, then enter a name, host, port, username, and optional password.</li>
+          <li>Select <strong>SSH</strong>, <strong>Telnet</strong>, <strong>Serial</strong>, or <strong>RDP</strong>. Network connections use a host, TCP port, and optional credentials; Serial uses a local device path and line settings.</li>
           <li>Choose a group and favorite status, configure any protocol-specific options, and click <strong>Add</strong>.</li>
           <li>Double-click the connection, select it and press <kbd>⌘O</kbd>, or choose <strong>Open</strong> from its context menu.</li>
           <li>For SSH file management, use the tree beside the terminal or choose <strong>Open SFTP Browser</strong>.</li>
@@ -276,8 +278,8 @@
         <a class="top-link" href="#top">Back to top</a>
         <h2>The workspace</h2>
         <div class="cards">
-          <div class="card"><h3>Connection sidebar</h3><p>Favorites, groups, saved SSH, Telnet, and RDP hosts, the built-in Local Terminal, and connection actions.</p></div>
-          <div class="card"><h3>Session tabs</h3><p>Independent local terminal, SSH, Telnet, SFTP, and RDP sessions that remain active while you switch tabs.</p></div>
+          <div class="card"><h3>Connection sidebar</h3><p>Favorites, groups, saved SSH, Telnet, Serial, and RDP connections, the built-in Local Terminal, and connection actions.</p></div>
+          <div class="card"><h3>Session tabs</h3><p>Independent local terminal, SSH, Telnet, Serial, SFTP, and RDP sessions that remain active while you switch tabs.</p></div>
           <div class="card"><h3>Session area</h3><p>The active terminal, file browser, or embedded Windows desktop automatically fills the available workspace.</p></div>
           <div class="card"><h3>Resizable layout</h3><p>Resize or hide the sidebar. RDP sessions recalculate their remote desktop size to match the visible area.</p></div>
         </div>
@@ -289,11 +291,19 @@
         <h2>Connections and groups</h2>
         <h3>Sidebar actions</h3>
         <ul>
-          <li><strong>Single-click</strong> selects a connection; <strong>double-click</strong> opens it.</li>
+          <li><strong>Single-click</strong> selects a connection or folder; <strong>double-click</strong> opens a connection.</li>
+          <li><strong>Command-click</strong> toggles individual connections or folders. <strong>Shift-click</strong> selects the visible range between two connections or two folders.</li>
+          <li>Drag a selected row onto a group header or a connection in that group to move all selected items together. A dragged folder keeps its clients and subfolders, including empty ones.</li>
+          <li>Drop connections onto <strong>Favorites</strong> to favorite them, or onto <strong>Ungrouped</strong> to remove their group assignment. Drop a folder onto Ungrouped to make it a top-level folder. Moving a connection to a group removes its Favorite marker so it appears there.</li>
+          <li>A folder cannot be moved into itself or onto a destination with the same folder name. Folders cannot be dropped onto Favorites.</li>
+          <li>Groups and connections remain alphabetically sorted; dragging changes group membership, not the manual order within a group.</li>
           <li>The <strong>Add</strong> menu creates a connection or a persistent empty group.</li>
+          <li>Right-click a group or use its ellipsis menu to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or delete it when empty. Renaming updates nested groups and client assignments but not saved credentials.</li>
+          <li>Groups can contain both connections and more subgroups; click the disclosure arrow to expand or collapse them.</li>
+          <li>Type in the sidebar search field, or press <strong>Command-F</strong>, to find connections by name, hostname or IP address, group path, or port. Multiple words narrow the results.</li>
           <li>The ellipsis menu applies actions to the selected connection.</li>
-          <li>Right-click a connection to open, edit, duplicate, move, favorite, copy its address, copy an SSH command, open SFTP, or delete it.</li>
-          <li>An empty group can be deleted from its group-header menu. A group containing connections must be emptied first.</li>
+          <li>Right-click a connection to open, quickly rename, edit, duplicate, move, favorite, copy its address, copy an SSH command, open SFTP, or delete it.</li>
+          <li>An empty group can be deleted from its group-header menu. A group containing connections or subgroups must be emptied first.</li>
         </ul>
         <h3>Common connection fields</h3>
         <table>
@@ -301,23 +311,36 @@
           <tbody>
             <tr><td>Name</td><td>The friendly label displayed in the sidebar and tab.</td></tr>
             <tr><td>Host</td><td>A hostname or IP address reachable from this Mac.</td></tr>
-            <tr><td>Port</td><td>Defaults to 22 for SSH, 23 for Telnet, and 3389 for RDP. Any valid TCP port may be used.</td></tr>
+            <tr><td>Port</td><td>Defaults to 22 for SSH, 23 for Telnet, and 3389 for RDP. Serial uses a local device path instead of a TCP port.</td></tr>
             <tr><td>Username</td><td>The remote account. RDP also accepts <code>DOMAIN\username</code>.</td></tr>
             <tr><td>Password</td><td>Optional secret stored in Keychain. Leaving it blank while editing keeps the existing password; use Remove Saved Password to delete it explicitly.</td></tr>
             <tr><td>Group</td><td>The sidebar group containing the connection.</td></tr>
             <tr><td>Favorite</td><td>Shows the connection in the Favorites section.</td></tr>
           </tbody>
         </table>
-        <p>Duplicating a connection creates a new connection identifier and safely copies its saved Keychain password. Deleting a connection removes its Keychain password as well.</p>
+        <p>Duplicating a connection creates a new connection identifier. A connection using its own Keychain password gets a separate copy; a connection linked to a credential profile keeps that same shared link. Deleting a connection does not delete a shared profile.</p>
         <h3>Import and export</h3>
         <p>Open the connection-library menu in the toolbar or sidebar, or use the File menu, to import or export your saved library.</p>
         <ul>
-          <li>A normal <code>.nethriva</code> export contains connection settings, favorite status, groups, and empty groups, but never passwords.</li>
-          <li>Enable <strong>Include saved credentials</strong> to create a password-protected <code>.nethriva-secure</code> archive. The entire archive is encrypted, and its password cannot be recovered.</li>
-          <li>Import shows connection, group, saved-credential, and duplicate counts before changing the current library.</li>
-          <li>For matching connection identifiers, choose whether to keep the existing connection or replace it with the imported record. Imported passwords are saved in the active macOS Keychain profile.</li>
+          <li>A normal <code>.nethriva</code> export contains connection settings, groups, credential-profile names, usernames, and domains, but never passwords. Treat even a password-free export as private.</li>
+          <li>Enable <strong>Include saved credentials</strong> to create a password-protected <code>.nethriva-secure</code> archive containing individual and shared Keychain passwords. The entire archive is encrypted, and its password cannot be recovered.</li>
+          <li>Import shows connection, group, credential-profile, saved-credential, and duplicate counts before changing the current library.</li>
+          <li>For matching identifiers, choose whether to keep existing connections and profiles or replace them. Imported passwords are saved in the active macOS Keychain profile.</li>
         </ul>
         <div class="callout warning"><strong>Protect credential exports like a password vault.</strong> Use a unique, strong archive password and transfer the file through a trusted channel.</div>
+      </section>
+
+      <section id="credential-profiles">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Credential profiles</h2>
+        <p>Open <strong>Manage Credential Profiles…</strong> from the toolbar or File menu. Create a named profile with a username, optional Windows domain, and optional password. The password lives in macOS Keychain; the profile name, username, and domain remain in local app preferences.</p>
+        <ol>
+          <li>Create a profile such as a shared network-admin account or a domain administrator. Enter a new password if you want Nethriva to offer or use it.</li>
+          <li>In an SSH, Telnet, or RDP connection, choose that profile from the <strong>Credentials</strong> menu. Its username and password will be used the next time the connection opens; the domain applies to RDP only.</li>
+          <li>To rotate a shared password, edit the profile once. Every linked connection uses the new password on its next session or reconnect.</li>
+          <li>To return a connection to its own credentials, choose <strong>This connection's own credentials</strong> and enter its username/password. Linking a profile removes that connection's old individual saved password.</li>
+        </ol>
+        <p>A profile cannot be deleted while connections still use it. Existing open sessions are not interrupted by profile edits. If an RDP authentication prompt saves new credentials for one linked connection, Nethriva detaches that connection from the shared profile rather than changing the profile for every client.</p>
       </section>
 
       <section id="settings">
@@ -380,10 +403,23 @@
           <li>Port 23 is selected by default, and any valid custom TCP port can be used.</li>
           <li>Nethriva negotiates terminal echo, suppress-go-ahead, xterm-compatible terminal type, and window-size updates.</li>
           <li>Keyboard input, <kbd>⌘V</kbd> paste, secondary-click paste, selection, and terminal resizing work inside the tab.</li>
-          <li>A detected password prompt can show an explicit <strong>Send Saved Password</strong> action.</li>
+          <li>A detected login or username prompt can show <strong>Send Saved Username</strong>; a detected password prompt can show <strong>Send Saved Password</strong>. Sending either is an explicit action.</li>
           <li>An ended or failed session offers a reconnect control.</li>
         </ul>
         <div class="callout warning"><strong>Telnet is not encrypted.</strong> Usernames, passwords, commands, and output can be observed or altered on the network. Use Telnet only on an isolated, trusted management network and prefer SSH whenever possible.</div>
+      </section>
+
+      <section id="serial">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Serial sessions</h2>
+        <p>Connect a USB-to-serial adapter or USB-to-RJ45 console cable that appears as a serial device on this Mac. In <strong>Add → New Connection</strong>, choose <strong>Serial</strong>, select an available <code>/dev/cu.*</code> port, and set the line parameters required by the device. The list refreshes while the editor is open; use the refresh button or enter a device path manually if needed.</p>
+        <ul>
+          <li>Set baud rate, 7 or 8 data bits, none/even/odd parity, 1 or 2 stop bits, and none/hardware/software flow control. Common console settings are 9600 baud, 8 data bits, no parity, 1 stop bit, and no flow control, but use your device documentation.</li>
+          <li>Enable <strong>Local Echo</strong> only if typed text is not echoed by the device.</li>
+          <li>Double-click the saved connection to open its SwiftTerm tab. Keyboard input, Command-V paste, selection, and secondary-click paste work there.</li>
+          <li>If the adapter is removed or the port fails, reconnect after it reappears. Close the tab to release the device.</li>
+        </ul>
+        <div class="callout warning">A passive USB-to-Ethernet/RJ45 adapter is not a serial console cable. It must expose a macOS serial device such as <code>/dev/cu.usbserial-…</code> or <code>/dev/cu.usbmodem…</code>. Serial traffic is not encrypted, and Serial connections do not store credentials.</div>
       </section>
 
       <section id="remote-files">
@@ -479,8 +515,9 @@
           <tbody>
             <tr><td>Open Nethriva Help</td><td><kbd>⌘?</kbd> or Help → Nethriva Help</td></tr>
             <tr><td>Open selected connection</td><td><kbd>⌘O</kbd></td></tr>
+            <tr><td>Find a connection</td><td><kbd>⌘F</kbd></td></tr>
             <tr><td>Open SFTP for selected SSH connection</td><td><kbd>⌘⇧U</kbd></td></tr>
-            <tr><td>Paste into local, SSH, or Telnet terminal</td><td><kbd>⌘V</kbd></td></tr>
+            <tr><td>Paste into local, SSH, Telnet, or Serial terminal</td><td><kbd>⌘V</kbd></td></tr>
             <tr><td>Terminal pointing-device paste</td><td>Secondary-click or two-finger click</td></tr>
             <tr><td>Windows common edit operations</td><td><kbd>⌘C</kbd>, <kbd>⌘X</kbd>, <kbd>⌘V</kbd>, <kbd>⌘A</kbd></td></tr>
             <tr><td>Windows context menu</td><td>Secondary-click or two-finger click inside RDP</td></tr>
@@ -498,6 +535,7 @@
           <li>SSH host identity is protected by the current user's OpenSSH <code>known_hosts</code> checks.</li>
           <li>SFTP passwords are delivered to the helper through a private pipe, not process arguments or environment variables, and unsafe control characters are rejected from commands.</li>
           <li>Telnet provides no encryption or host-identity verification and must be treated as a legacy, trusted-network-only protocol.</li>
+          <li>Serial uses a local device and does not encrypt bytes sent over the cable.</li>
           <li>RDP credentials are supplied to the embedded native client without appearing in a separate RDP process list.</li>
           <li>Sensitive RDP redirects are disabled unless enabled in that connection's settings.</li>
           <li>Connection and group records remain in the current macOS user's local preferences.</li>
@@ -511,8 +549,10 @@
       <section id="troubleshooting">
         <a class="top-link" href="#top">Back to top</a>
         <h2>Troubleshooting</h2>
+        <details><summary>macOS keeps asking for my login keychain password</summary><div>This macOS permission dialog asks for the <strong>login keychain password</strong>, not the remote server password. Nethriva reads an existing saved credential without rewriting it, and its connection editor checks only whether a password exists. If the password is rejected, open Keychain Access and check whether the <strong>login</strong> keychain unlocks with your current Mac login password or a previous one. Do not reset the keychain merely to dismiss a prompt; a reset can remove saved passwords. See <a href="https://support.apple.com/guide/keychain-access/kyca2429/mac">Apple's keychain-password guidance</a>.</div></details>
         <details open><summary>I cannot type or paste into SSH</summary><div>Click inside the terminal first. Password input is invisible, so type or paste it and press Return even though no characters appear. Command-V pastes; secondary-click also pastes into terminal sessions.</div></details>
         <details><summary>Telnet does not connect or accept keyboard input</summary><div>Confirm the device exposes Telnet on the configured port and that no firewall blocks it, then click inside the terminal before typing. Use Telnet only on a trusted management network because its traffic is unencrypted.</div></details>
+        <details><summary>My serial port is missing or will not open</summary><div>Confirm that the cable is a USB serial console adapter, not an Ethernet adapter; check that it appears as <code>/dev/cu.*</code> after connecting it. Some adapters require a macOS driver. Reopen or refresh the editor, ensure another terminal app is not using the port, and match your device's baud and framing settings. An unplugged port cannot be opened.</div></details>
         <details><summary>SSH keeps asking whether the host is authentic</summary><div>Verify the displayed fingerprint, enter <code>yes</code>, and ensure the current user can write to <code>~/.ssh/known_hosts</code>. Investigate changed-host warnings instead of replacing the key automatically.</div></details>
         <details><summary>The remote file tree is empty or slow</summary><div>Connect through SSH and approve the host key first. Confirm the server enables SFTP and that the account can list the directory. The first connection performs DNS, trust, and authentication work; later operations reuse its authenticated control connection.</div></details>
         <details><summary>SFTP reports authentication, timeout, or permission errors</summary><div>Check the connection's authentication mode, identity file, agent, jump host, port, and username. Confirm the server's SFTP subsystem is enabled and the account has permission for the requested path. Use the error action to open the associated SSH session when host trust requires attention.</div></details>
@@ -533,6 +573,7 @@
           <li>Recursive deletion of non-empty remote SFTP directories is disabled.</li>
           <li>SFTP does not automatically trust unknown SSH host keys.</li>
           <li>Telnet has no transport encryption or server-identity verification.</li>
+          <li>Serial sessions require a compatible local adapter and do not provide transport encryption.</li>
           <li>Connection and group data are local and do not synchronize between Macs.</li>
           <li>There is no automatic library synchronization, team vault, or credential-sharing service.</li>
           <li>RDP redirection features depend on the remote host's Windows policy and configuration.</li>
@@ -547,7 +588,7 @@
         <p>This manual is bundled with Nethriva and works without an internet connection. Open it from the toolbar's question-mark button, choose <strong>Help → Nethriva Help</strong>, or press <kbd>⌘?</kbd>.</p>
         <p>Use the search field to highlight matching terms. Repeated searches start from the beginning of the manual and show every match.</p>
         <p>Nethriva is free and open-source software. If it saves you time, you can optionally leave a <a href="https://ko-fi.com/vsharapov">one-time tip through Ko-fi</a>. The Help menu provides the same link.</p>
-        <p class="muted">Manual version 0.11.0 · Covers local terminal, SSH, Telnet, remote file tree, SFTP, embedded RDP, connection import/export, security, and troubleshooting.</p>
+        <p class="muted">Manual version 0.12.0 · Covers local terminal, SSH, Telnet, Serial, remote file tree, SFTP, embedded RDP, connection import/export, credential profiles, security, and troubleshooting.</p>
       </section>
 
       <footer>Nethriva Help · Offline documentation bundled with the application</footer>

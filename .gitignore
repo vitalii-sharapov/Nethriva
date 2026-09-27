@@ -10,3 +10,5 @@ work/
 /outputs/
 *.xcarchive
 *.dmg
+*.nethriva
+*.nethriva-secure

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ConnectionRowView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     let connection: RemoteConnection
 
@@ -13,7 +14,7 @@ struct ConnectionRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(connection.name)
                     .lineLimit(1)
-                if let endpoint = settings.sidebarEndpoint(for: connection) {
+                if let endpoint = settings.sidebarEndpoint(for: appState.resolvedConnection(for: connection)) {
                     Text(endpoint)
                         .font(.caption)
                         .foregroundStyle(.secondary)

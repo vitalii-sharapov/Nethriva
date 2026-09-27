@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ConnectionEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
 
     private let connection: RemoteConnection?
@@ -12,6 +13,7 @@ struct ConnectionEditorView: View {
     @State private var host: String
     @State private var port: Int
     @State private var username: String
+    @State private var credentialProfileID: UUID?
     @State private var password = ""
     @State private var hasSavedPassword = false
     @State private var removeSavedPassword = false
@@ -23,6 +25,13 @@ struct ConnectionEditorView: View {
     @State private var sshForwardAgent: Bool
     @State private var sshCompression: Bool
     @State private var sshKeepAliveInterval: Int
+    @State private var serialBaudRate: Int
+    @State private var serialDataBits: Int
+    @State private var serialParity: SerialParity
+    @State private var serialStopBits: Int
+    @State private var serialFlowControl: SerialFlowControl
+    @State private var serialLocalEcho: Bool
+    @State private var availableSerialPorts: [String] = []
     @State private var isShowingSSHOptions: Bool
     @State private var rdpDomain: String
     @State private var rdpGatewayHost: String
@@ -54,6 +63,7 @@ struct ConnectionEditorView: View {
         _host = State(initialValue: connection?.host ?? "")
         _port = State(initialValue: connection?.port ?? ConnectionKind.ssh.defaultPort)
         _username = State(initialValue: connection?.username ?? "")
+        _credentialProfileID = State(initialValue: connection?.credentialProfileID)
         _group = State(initialValue: connection?.group ?? initialGroup ?? "Ungrouped")
         _isFavorite = State(initialValue: connection?.isFavorite ?? false)
         _sshAuthentication = State(initialValue: connection?.effectiveSSHAuthentication ?? .automatic)
@@ -62,6 +72,12 @@ struct ConnectionEditorView: View {
         _sshForwardAgent = State(initialValue: connection?.sshForwardAgent ?? false)
         _sshCompression = State(initialValue: connection?.sshCompression ?? false)
         _sshKeepAliveInterval = State(initialValue: connection?.effectiveSSHKeepAliveInterval ?? 30)
+        _serialBaudRate = State(initialValue: connection?.effectiveSerialBaudRate ?? 115_200)
+        _serialDataBits = State(initialValue: connection?.effectiveSerialDataBits ?? 8)
+        _serialParity = State(initialValue: connection?.effectiveSerialParity ?? .none)
+        _serialStopBits = State(initialValue: connection?.effectiveSerialStopBits ?? 1)
+        _serialFlowControl = State(initialValue: connection?.effectiveSerialFlowControl ?? .none)
+        _serialLocalEcho = State(initialValue: connection?.effectiveSerialLocalEcho ?? false)
         _isShowingSSHOptions = State(initialValue:
             connection?.sshIdentityFile != nil
                 || connection?.sshJumpHost != nil
@@ -100,29 +116,102 @@ struct ConnectionEditorView: View {
                 Picker("Protocol", selection: $kind) {
                     Text("SSH").tag(ConnectionKind.ssh)
                     Text("Telnet").tag(ConnectionKind.telnet)
+                    Text("Serial").tag(ConnectionKind.serial)
                     Text("RDP").tag(ConnectionKind.rdp)
                 }
                 .onChange(of: kind) { _, newValue in
                     port = newValue.defaultPort
+                    if newValue == .serial {
+                        host = availableSerialPorts.first ?? ""
+                        credentialProfileID = nil
+                        username = ""
+                        password = ""
+                    } else if connection?.kind == .serial {
+                        host = ""
+                    }
                 }
 
-                TextField("Host", text: $host, prompt: Text("server.example.com"))
-                    .textContentType(.URL)
-
-                TextField("Port", value: $port, format: .number)
-
-                TextField("Username", text: $username)
-                    .textContentType(.username)
-
-                SecureField(connection == nil ? "Password (optional)" : "New password (leave blank to keep current)", text: $password)
-                    .textContentType(.password)
-                    .onChange(of: password) { _, newValue in
-                        if !newValue.isEmpty {
-                            removeSavedPassword = false
+                if kind == .serial {
+                    HStack {
+                        Picker("Available Port", selection: $host) {
+                            Text("Choose a port").tag("")
+                            ForEach(availableSerialPorts, id: \.self) { device in
+                                Text(device).tag(device)
+                            }
+                            if !host.isEmpty && !availableSerialPorts.contains(host) {
+                                Text("Unavailable: \(host)").tag(host)
+                            }
+                        }
+                        Button {
+                            refreshSerialPorts()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .help("Refresh connected serial adapters")
+                    }
+                    TextField("Device Path", text: $host, prompt: Text("/dev/cu.usbserial-…"))
+                        .font(.system(.body, design: .monospaced))
+                    Text("Plug in a USB-to-serial adapter, then choose its /dev/cu.* port. You can also enter the path manually.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Baud Rate", selection: $serialBaudRate) {
+                        ForEach(SerialPortConfiguration.supportedBaudRates, id: \.self) { rate in
+                            Text(rate.formatted()).tag(rate)
                         }
                     }
+                    Picker("Data Bits", selection: $serialDataBits) {
+                        Text("7").tag(7)
+                        Text("8").tag(8)
+                    }
+                    Picker("Parity", selection: $serialParity) {
+                        ForEach(SerialParity.allCases) { value in
+                            Text(value.displayName).tag(value)
+                        }
+                    }
+                    Picker("Stop Bits", selection: $serialStopBits) {
+                        Text("1").tag(1)
+                        Text("2").tag(2)
+                    }
+                    Picker("Flow Control", selection: $serialFlowControl) {
+                        ForEach(SerialFlowControl.allCases) { value in
+                            Text(value.displayName).tag(value)
+                        }
+                    }
+                    Toggle("Local Echo", isOn: $serialLocalEcho)
+                } else {
+                    TextField("Host", text: $host, prompt: Text("server.example.com"))
+                        .textContentType(.URL)
+                    TextField("Port", value: $port, format: .number)
+                    HStack {
+                        Picker("Credentials", selection: $credentialProfileID) {
+                            Text("This connection's own credentials").tag(nil as UUID?)
+                            ForEach(appState.credentialProfiles) { profile in
+                                Text(profile.name).tag(profile.id as UUID?)
+                            }
+                        }
+                        Button("Manage…") { openWindow(id: "credential-manager") }
+                    }
+                    if let credentialProfileID {
+                        if let profile = appState.credentialProfiles.first(where: { $0.id == credentialProfileID }) {
+                            Text("Uses \(profile.name)'s username\(kind == .rdp && !profile.domain.isEmpty ? " and Windows domain" : "") and Keychain password. Changes to that profile affect every linked connection.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Label("This credential profile is missing. Choose another profile.", systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.red)
+                        }
+                    } else {
+                        TextField("Username", text: $username)
+                            .textContentType(.username)
+                        SecureField(connection == nil ? "Password (optional)" : "New password (leave blank to keep current)", text: $password)
+                            .textContentType(.password)
+                            .onChange(of: password) { _, newValue in
+                                if !newValue.isEmpty { removeSavedPassword = false }
+                            }
+                    }
+                }
 
-                if connection != nil && hasSavedPassword {
+                if kind != .serial && credentialProfileID == nil && connection != nil && hasSavedPassword {
                     HStack {
                         if removeSavedPassword {
                             Label("Saved password will be removed when you save.", systemImage: "key.slash")
@@ -271,7 +360,9 @@ struct ConnectionEditorView: View {
                     }
 
                     DisclosureGroup("Security, Gateway & Reliability", isExpanded: $isShowingRDPSecurityOptions) {
-                        TextField("Domain", text: $rdpDomain)
+                        if credentialProfileID == nil {
+                            TextField("Domain", text: $rdpDomain)
+                        }
                         TextField("Gateway", text: $rdpGatewayHost, prompt: Text("gateway.example.com"))
                         TextField("Gateway Username", text: $rdpGatewayUsername)
 
@@ -327,18 +418,29 @@ struct ConnectionEditorView: View {
         }
         .frame(
             width: 600,
-            height: kind == .rdp ? 760 : (kind == .ssh && isShowingSSHOptions ? 650 : 520)
+            height: kind == .rdp ? 780 : (kind == .serial ? 680 : (kind == .ssh && isShowingSSHOptions ? 690 : 560))
         )
+        .navigationTitle(connection == nil ? "New Connection" : "Edit Connection")
         .task {
+            refreshSerialPorts()
             guard let connection else { return }
-            hasSavedPassword = (try? appState.password(for: connection)) != nil
+            if connection.credentialProfileID == nil {
+                hasSavedPassword = (try? appState.hasSavedPassword(for: connection)) ?? false
+            }
+        }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            if kind == .serial { refreshSerialPorts() }
         }
     }
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (1...65535).contains(port)
+            && (kind == .serial
+                ? SerialPortDiscovery.isValidDevicePath(host.trimmingCharacters(in: .whitespacesAndNewlines))
+                    && SerialPortConfiguration.supportedBaudRates.contains(serialBaudRate)
+                : (1...65535).contains(port))
+            && (credentialProfileID == nil || appState.credentialProfiles.contains { $0.id == credentialProfileID })
     }
 
     private var availableGroups: [String] {
@@ -353,8 +455,9 @@ struct ConnectionEditorView: View {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             kind: kind,
             host: host.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: port,
-            username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: kind == .serial ? 0 : port,
+            username: kind == .serial || credentialProfileID != nil ? "" : username.trimmingCharacters(in: .whitespacesAndNewlines),
+            credentialProfileID: kind == .serial ? nil : credentialProfileID,
             group: group.trimmingCharacters(in: .whitespacesAndNewlines),
             isFavorite: isFavorite,
             createdAt: connection?.createdAt ?? Date(),
@@ -364,7 +467,13 @@ struct ConnectionEditorView: View {
             sshForwardAgent: kind == .ssh ? sshForwardAgent : nil,
             sshCompression: kind == .ssh ? sshCompression : nil,
             sshKeepAliveInterval: kind == .ssh ? sshKeepAliveInterval : nil,
-            rdpDomain: kind == .rdp ? normalizedOptional(rdpDomain) : nil,
+            serialBaudRate: kind == .serial ? serialBaudRate : nil,
+            serialDataBits: kind == .serial ? serialDataBits : nil,
+            serialParity: kind == .serial ? serialParity : nil,
+            serialStopBits: kind == .serial ? serialStopBits : nil,
+            serialFlowControl: kind == .serial ? serialFlowControl : nil,
+            serialLocalEcho: kind == .serial ? serialLocalEcho : nil,
+            rdpDomain: kind == .rdp && credentialProfileID == nil ? normalizedOptional(rdpDomain) : nil,
             rdpGatewayHost: kind == .rdp ? normalizedOptional(rdpGatewayHost) : nil,
             rdpGatewayUsername: kind == .rdp ? normalizedOptional(rdpGatewayUsername) : nil,
             rdpDisplayMode: kind == .rdp ? .dynamicWindow : nil,
@@ -389,12 +498,14 @@ struct ConnectionEditorView: View {
 
         do {
             if connection == nil {
-                try appState.add(updatedConnection, password: password)
+                try appState.add(updatedConnection, password: credentialProfileID == nil && kind != .serial ? password : nil)
             } else {
                 try appState.update(
                     updatedConnection,
-                    password: password,
+                    password: credentialProfileID == nil && kind != .serial ? password : nil,
                     removeSavedPassword: removeSavedPassword
+                        || (kind == .serial && connection?.kind != .serial)
+                        || (credentialProfileID != nil && connection?.credentialProfileID == nil)
                 )
             }
             dismiss()
@@ -414,11 +525,18 @@ struct ConnectionEditorView: View {
             "macOS OpenSSH uses your SSH config and keys. Saved passwords remain in Keychain."
         case .telnet:
             "Telnet is intended only for legacy devices on trusted management networks."
+        case .serial:
+            "Serial connects directly to a local device. Disconnect before unplugging the adapter."
         case .rdp:
             "RDP uses the bundled FreeRDP runtime. Saved passwords remain in Keychain."
         case .localShell:
             "Local terminal sessions run on this Mac."
         }
+    }
+
+    private func refreshSerialPorts() {
+        let ports = SerialPortDiscovery.availablePorts()
+        if ports != availableSerialPorts { availableSerialPorts = ports }
     }
 
     private func chooseIdentityFile() {

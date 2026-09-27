@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Nethriva version
-      placeholder: "0.10.0"
+      placeholder: "0.12.0 (build 25)"
     validations:
       required: true
   - type: input
@@ -29,9 +29,11 @@ body:
         - Local terminal
         - SSH
         - Telnet
+        - Serial
         - SFTP
         - RDP
         - Connection management
+        - Credential profiles
         - Build or installation
         - Other
     validations:

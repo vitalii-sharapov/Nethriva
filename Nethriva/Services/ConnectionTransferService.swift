@@ -7,6 +7,11 @@ struct ConnectionArchiveCredential: Codable, Equatable {
     let password: String
 }
 
+struct CredentialProfileSecret: Codable, Equatable {
+    let profileID: UUID
+    let password: String
+}
+
 struct ConnectionArchive: Codable, Equatable {
     static let formatIdentifier = "com.vitalii.nethriva.connections"
     static let currentSchemaVersion = 1
@@ -17,12 +22,21 @@ struct ConnectionArchive: Codable, Equatable {
     let groups: [String]
     let connections: [RemoteConnection]
     let credentials: [ConnectionArchiveCredential]
+    let profiles: [CredentialProfile]
+    let profileCredentials: [CredentialProfileSecret]
+
+    private enum CodingKeys: String, CodingKey {
+        case format, schemaVersion, exportedAt, groups, connections, credentials
+        case profiles, profileCredentials
+    }
 
     init(
         exportedAt: Date = Date(),
         groups: [String],
         connections: [RemoteConnection],
-        credentials: [ConnectionArchiveCredential] = []
+        credentials: [ConnectionArchiveCredential] = [],
+        profiles: [CredentialProfile] = [],
+        profileCredentials: [CredentialProfileSecret] = []
     ) {
         format = Self.formatIdentifier
         schemaVersion = Self.currentSchemaVersion
@@ -30,9 +44,23 @@ struct ConnectionArchive: Codable, Equatable {
         self.groups = groups
         self.connections = connections
         self.credentials = credentials
+        self.profiles = profiles
+        self.profileCredentials = profileCredentials
     }
 
-    var includesCredentials: Bool { !credentials.isEmpty }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        format = try container.decode(String.self, forKey: .format)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        exportedAt = try container.decode(Date.self, forKey: .exportedAt)
+        groups = try container.decode([String].self, forKey: .groups)
+        connections = try container.decode([RemoteConnection].self, forKey: .connections)
+        credentials = try container.decodeIfPresent([ConnectionArchiveCredential].self, forKey: .credentials) ?? []
+        profiles = try container.decodeIfPresent([CredentialProfile].self, forKey: .profiles) ?? []
+        profileCredentials = try container.decodeIfPresent([CredentialProfileSecret].self, forKey: .profileCredentials) ?? []
+    }
+
+    var includesCredentials: Bool { !credentials.isEmpty || !profileCredentials.isEmpty }
 }
 
 struct ConnectionArchiveInspection {
@@ -226,7 +254,7 @@ enum ConnectionTransferService {
         guard archive.groups.count <= 10_000, archive.connections.count <= 100_000 else {
             throw ConnectionTransferError.invalidArchiveContent("too many groups or connections")
         }
-        guard allowsCredentials || archive.credentials.isEmpty else {
+        guard allowsCredentials || !archive.includesCredentials else {
             throw ConnectionTransferError.plaintextCredentials
         }
 
@@ -243,9 +271,29 @@ enum ConnectionTransferService {
                 connection.host.count <= 4_096 &&
                 connection.username.count <= 4_096 &&
                 connection.group.count <= 1_024 &&
-                (1...65_535).contains(connection.port)
+                (connection.kind == .serial
+                    ? connection.port == 0 && SerialPortDiscovery.isValidDevicePath(connection.host)
+                        && SerialPortConfiguration(connection: connection).isValid
+                    : (1...65_535).contains(connection.port))
         }) else {
             throw ConnectionTransferError.invalidArchiveContent("one or more connection records are malformed")
+        }
+        let profileIDs = archive.profiles.map(\.id)
+        guard archive.profiles.count <= 100_000,
+              Set(profileIDs).count == profileIDs.count,
+              Set(profileIDs).isDisjoint(with: Set(connectionIDs)),
+              archive.profiles.allSatisfy({ profile in
+                  !profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !profile.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && profile.name.count <= 1_024
+                    && profile.username.count <= 4_096
+                    && profile.domain.count <= 4_096
+              }),
+              archive.connections.allSatisfy({ connection in
+                  guard let profileID = connection.credentialProfileID else { return true }
+                  return connection.kind != .serial && profileIDs.contains(profileID)
+              }) else {
+            throw ConnectionTransferError.invalidArchiveContent("credential profiles or links are malformed")
         }
         guard archive.groups.allSatisfy({ group in
             !group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && group.count <= 1_024
@@ -254,10 +302,19 @@ enum ConnectionTransferService {
         }
 
         let credentialIDs = archive.credentials.map(\.connectionID)
+        let credentialEligibleIDs = Set(archive.connections.filter {
+            $0.kind != .serial && $0.credentialProfileID == nil
+        }.map(\.id))
         guard Set(credentialIDs).count == credentialIDs.count,
-              Set(credentialIDs).isSubset(of: Set(connectionIDs)),
+              Set(credentialIDs).isSubset(of: credentialEligibleIDs),
               archive.credentials.allSatisfy({ $0.password.utf8.count <= 65_536 }) else {
             throw ConnectionTransferError.invalidArchiveContent("the credential records do not match the connections")
+        }
+        let profileCredentialIDs = archive.profileCredentials.map(\.profileID)
+        guard Set(profileCredentialIDs).count == profileCredentialIDs.count,
+              Set(profileCredentialIDs).isSubset(of: Set(profileIDs)),
+              archive.profileCredentials.allSatisfy({ $0.password.utf8.count <= 65_536 }) else {
+            throw ConnectionTransferError.invalidArchiveContent("profile passwords do not match the profiles")
         }
     }
 

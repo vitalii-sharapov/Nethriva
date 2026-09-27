@@ -55,6 +55,8 @@ struct SessionWorkspaceView: View {
                 SSHSessionView(connection: tab.connection)
             case .telnet:
                 TelnetSessionView(connection: tab.connection)
+            case .serial:
+                SerialSessionView(connection: tab.connection)
             case .rdp:
                 RDPSessionView(connection: tab.connection)
             }

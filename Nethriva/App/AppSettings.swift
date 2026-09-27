@@ -47,6 +47,7 @@ final class AppSettings: ObservableObject {
 
     private func endpoint(for connection: RemoteConnection, showUsername: Bool) -> String {
         guard connection.kind != .localShell else { return "This Mac" }
+        if connection.kind == .serial { return connection.host }
         let username = showUsername && !connection.username.isEmpty
             ? "\(connection.username)@"
             : ""

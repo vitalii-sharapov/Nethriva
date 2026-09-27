@@ -2,9 +2,9 @@
 
 # Nethriva
 
-Nethriva is an open-source native macOS connection manager for local terminal, SSH, Telnet, SFTP, and RDP sessions. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
+Nethriva is an open-source native macOS connection manager for local terminal, SSH, Telnet, Serial, SFTP, and RDP sessions. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
 
-The current project version is Nethriva 0.11.0 (build 24). This source update does not publish a new GitHub release.
+The current project version is Nethriva 0.12.0 (build 25). This source update does not publish a new GitHub release.
 
 ## At a glance
 
@@ -13,6 +13,7 @@ The current project version is Nethriva 0.11.0 (build 24). This source update do
 | Local terminal | SwiftTerm with a real macOS pseudo-terminal | Yes | Local filesystem |
 | SSH | macOS OpenSSH hosted inside SwiftTerm | Yes | Integrated SFTP tree |
 | Telnet | Native TCP client with Telnet option negotiation and SwiftTerm | Yes | No |
+| Serial | Native USB/serial device I/O with SwiftTerm | Yes | No |
 | SFTP browser | macOS SFTP with authenticated connection reuse | Yes | Upload, download, move, and drag-and-drop |
 | RDP | Bundled FreeRDP 3.31.1 with a native Cocoa bridge | Yes | Clipboard and Finder file/folder transfer |
 
@@ -40,7 +41,7 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Resizable split-view layout with a hideable, width-adjustable connection sidebar
 - Minimum application size of 900 × 600 for a usable session workspace
 - Horizontal session tab bar with protocol-specific icons and close controls
-- Independent local terminal, SSH, Telnet, SFTP, and RDP tabs
+- Independent local terminal, SSH, Telnet, Serial, SFTP, and RDP tabs
 - Resizable remote-file tree displayed beside every SSH terminal
 - Multiple tabs for the same saved connection
 - Session preservation while switching between open tabs
@@ -50,19 +51,26 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Searchable help navigation covering every connection and session type, security, shortcuts, limitations, and troubleshooting
 - Help access from the toolbar, the macOS Help menu, and Command-?
 - Native Settings window available from the app menu, toolbar, or Command-,
+- Separate movable Credential Profiles manager for shared SSH, Telnet, and RDP accounts
 - Keyboard commands:
+  - Command-F focuses the sidebar connection search
   - Command-O opens the selected connection
   - Command-Shift-U opens SFTP for the selected SSH connection
 
 ### Connection library and sidebar
 
 - Built-in Local Terminal connection
-- Saved SSH, Telnet, and RDP connections
-- Persistent connection data and custom groups
+- Saved SSH, Telnet, Serial, and RDP connections
+- Persistent connection data and expandable nested groups
+- Sidebar search by connection name, hostname/IP address, group path, or port; multiple terms can be combined
 - Favorites section for frequently used connections
-- Create, edit, duplicate, move, favorite, and delete connections
-- Create persistent empty groups and remove unused empty groups
+- Create, edit, quickly rename, duplicate, move, favorite, and delete connections
+- Create persistent empty groups and subgroups, and remove unused empty groups
+- Right-click a group to add a connection or subgroup, rename it, expand or collapse it, copy its path, or delete it when empty
 - Add a connection directly to a selected group
+- Command-click to toggle individual connections or folders, or Shift-click to select a visible range of the same kind
+- Drag selected connections to another group; drag a folder to move its entire subtree, including empty subfolders
+- Drag connections to Favorites to add them there, or to Ungrouped to remove their group assignment
 - Alphabetical group and connection ordering
 - Single-click selection and double-click opening
 - Sidebar Add menu for new connections and groups
@@ -71,7 +79,8 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - One-click Open button in the sidebar footer
 - Copy a connection address to the clipboard
 - Copy a ready-to-use SSH command, including a non-default port when configured
-- Connection type, host, port, username, password, group, and favorite fields
+- Connection type, endpoint, protocol-specific settings, group, and favorite fields
+- Optional reusable credential profile selected per SSH, Telnet, or RDP connection
 - Independent sidebar and session privacy settings for host addresses and usernames; usernames are hidden by default
 - Protocol-specific settings that appear only when relevant
 - Saved connection compatibility defaults for data created by earlier versions
@@ -83,7 +92,10 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 
 ### Credential handling and security
 
-- Password storage in macOS Keychain, indexed by the connection identifier
+- Password storage in macOS Keychain, indexed by a connection or reusable credential-profile identifier
+- Named reusable credential profiles with username, optional Windows domain, and a single shared Keychain password
+- Profile password rotation updates every linked connection on its next session; existing sessions stay active
+- Shared profiles cannot be deleted while a connection uses them; interactive RDP credential saving detaches only that connection
 - Passwords are not encoded into the persistent connection database
 - Editing a connection can keep, replace, or explicitly remove the existing password
 - Keychain items use the device-local, available-only-while-unlocked accessibility class
@@ -102,6 +114,7 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Credential-free connection archives cannot contain passwords
 - Credential exports encrypt the complete archive with AES-256-GCM and a PBKDF2-HMAC-SHA256 derived key
 - Export files are created with permissions restricted to the current macOS user
+- Password-free exports include profile metadata and usernames but no passwords; encrypted exports can include shared profile passwords
 
 ### Telnet sessions
 
@@ -110,9 +123,19 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Negotiation support for terminal type, echo, suppress-go-ahead, and window-size updates
 - Direct keyboard input, Command-V paste, secondary-click paste, and terminal resizing
 - Custom host and port, with port 23 as the default
-- Password-prompt detection and an explicit Send Saved Password action
+- Login/username- and password-prompt detection with explicit Send Saved Username and Send Saved Password actions
 - Reconnect control after a session closes or fails
 - Persistent warnings that Telnet sends credentials and session data without encryption
+
+### Serial sessions
+
+- Saved serial-console connections for USB-to-serial adapters, including USB-to-RJ45 console cables that expose a serial device on macOS
+- Live discovery and manual refresh of available `/dev/cu.*` ports in the connection editor; a device path may also be entered manually
+- Baud rates from 300 through 230400, 7/8 data bits, none/even/odd parity, 1/2 stop bits, and none/hardware/software flow control
+- Optional local echo, SwiftTerm keyboard input, Command-V paste, and secondary-click paste
+- Independent tab lifecycle, disconnection notice, and reconnect control
+- Serial device paths and settings can be imported/exported with the connection library; no serial credentials are requested or saved
+- The adapter must be connected and accessible to the current macOS user when the session opens
 
 ### Local terminal
 
@@ -271,7 +294,7 @@ Recursive deletion of non-empty remote folders is not currently enabled.
 - Versioned connection persistence through macOS user defaults
 - Last-known-good connection backup with automatic recovery and a visible warning if the primary store is damaged
 - Backward-compatible decoding for saved connections without newer SSH or RDP fields
-- Separate Debug and Release connection stores and Keychain services, preventing test clients from entering distributable builds
+- Separate Debug and Release connection stores and Keychain services; neither store is bundled into the app
 - Keychain-backed credential abstraction for testability
 - Unit coverage for:
   - Default protocol ports
@@ -308,7 +331,7 @@ Recursive deletion of non-empty remote folders is not currently enabled.
 
 On the first build, Xcode resolves the pinned SwiftTerm package. It may ask once to trust the package's build-information plugin.
 
-Debug builds started from Xcode use an isolated development connection library and Keychain service. They intentionally do not display connections saved by a Release build. This prevents personal or test records from entering development and release packaging workflows. Run a Release build to access the existing release-profile library, then use **File → Export Connections…** when you want a portable backup.
+Debug builds started from Xcode use an isolated development connection library and Keychain service. That development data persists across Xcode builds, so pressing Run again shows clients you previously saved in Debug. Release builds on the same Mac likewise reopen that Mac’s existing Release library. Neither library nor its Keychain passwords are embedded in `Nethriva.app` or transferred to a new user with a GitHub release ZIP. A first-time user starts with only Local Terminal. Export files are separate artifacts: do not attach a personal `.nethriva` or `.nethriva-secure` archive to a release.
 
 App Sandbox is intentionally disabled because Nethriva launches local terminal and system SSH/SFTP processes. Local and community Release builds can use Xcode's **Sign to Run Locally** option without a paid Apple Developer account. Developer ID signing and notarization are optional improvements for a warning-free first launch, not requirements for building or sharing the open-source application.
 
@@ -385,13 +408,21 @@ Open **Nethriva → Settings…** or press Command-, to choose whether the sideb
 
 #### Organize connections
 
-Create groups from the sidebar Add menu, add connections directly to a group, and mark frequently used entries as favorites. The selected-connection menu and row context menu expose opening, editing, duplication, moving, address copying, SSH-command copying, and deletion actions.
+Create groups from the sidebar Add menu. Right-click a group (or use its ellipsis menu) to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or delete it when empty. Renaming a group updates its clients and nested subgroups without changing saved credentials. Nested groups expand and collapse in the sidebar, and the saved hierarchy is included in library exports. Command-click to toggle individual clients or folders; Shift-click the first and last clients to select all visible clients between them, or do the same with folders. Drag any selected row onto a group header or a client in that group to move the selection together. Dragging a folder moves its clients and subfolders too, including empty subfolders. You can also drop clients onto Favorites or Ungrouped; dropping a folder onto Ungrouped moves it to the top level. A folder cannot be moved inside itself or overwrite another folder. Moving a client into a group removes the Favorite marker so it appears in its destination; groups remain alphabetically sorted rather than manually ordered. Type in the sidebar search field or press Command-F to find connections by name, hostname/IP, group path, or port; separate words narrow the results. The selected-connection menu and row context menu offer quick Rename alongside opening, editing, duplication, moving, address copying, SSH-command copying, and deletion actions.
 
 #### Back up or move a connection library
 
-Choose **File → Export Connections…**. A normal `.nethriva` archive preserves connection settings, favorites, groups, and empty groups without passwords. Enable **Include saved credentials** to create an encrypted `.nethriva-secure` archive and protect it with a password of at least eight characters. Nethriva cannot recover that password.
+Choose **File → Export Connections…**. A normal `.nethriva` archive preserves connection settings, favorites, groups, credential-profile names, usernames, and domains without passwords. It should still be treated as private. Enable **Include saved credentials** to create an encrypted `.nethriva-secure` archive containing individual and shared profile passwords, protected by a password of at least eight characters. Nethriva cannot recover that password.
 
-Choose **File → Import Connections…** to inspect an archive before applying it. If matching connection identifiers already exist, choose whether to keep the existing records or replace them. Imported credentials are written into the active profile's macOS Keychain.
+Choose **File → Import Connections…** to inspect an archive before applying it. If matching connection or credential-profile identifiers already exist, choose whether to keep or replace them. Imported passwords are written into the active Debug or Release macOS Keychain service.
+
+#### Reuse an administrator account
+
+Open **Manage Credential Profiles…** from the toolbar or File menu. Create a named username and optional Windows domain, then optionally store its password in Keychain. In each SSH, Telnet, or RDP connection, select that profile from the **Credentials** picker. A password change in the profile applies to all linked connections on their next session or reconnect. Profiles cannot be deleted while in use. Linking a connection removes its old individual saved password; saving different credentials from an RDP login prompt detaches only that connection from the shared profile.
+
+#### Connect to a serial console
+
+Connect a USB serial-console adapter, then add a **Serial** connection. Select its `/dev/cu.*` port and the baud rate, framing, flow control, and local-echo settings required by the device. The editor can refresh the available ports. Open the connection in a tab; if the adapter is unplugged, reconnect after it reappears. Serial connections do not use the credential manager.
 
 #### Work with SSH and remote files together
 
@@ -408,11 +439,12 @@ Opening an RDP connection places the desktop in the selected session tab. The de
 ## Data storage and privacy
 
 - Connections and group names are stored locally in macOS user defaults.
-- Passwords are stored as generic-password items in macOS Keychain and are keyed by each connection's UUID.
+- Passwords are stored as generic-password items in macOS Keychain. Individual passwords are keyed by connection UUID; shared credential-profile passwords are keyed by profile UUID.
 - Saved passwords are accessible only while this Mac is unlocked and cannot migrate to another device through a backup.
 - Password values are not written into the connection JSON or included in logged FreeRDP command arguments.
-- Plain `.nethriva` exports never include credentials. Credential-bearing `.nethriva-secure` exports encrypt the complete archive with password-based AES-256-GCM and are created for current-user access only.
+- Plain `.nethriva` exports never include passwords, but do contain connection and profile names, usernames, and domains. Password-bearing `.nethriva-secure` exports encrypt the complete archive with password-based AES-256-GCM and are created for current-user access only.
 - Xcode Debug builds use development-only preferences and Keychain identifiers; Release builds retain the user's normal application library.
+- Rebuilding or reinstalling the app does not erase either profile. The project and app bundle do not contain locally saved connections or Keychain passwords.
 - Display privacy preferences are saved with the active Debug or Release profile and do not change connection records or exports.
 - SSH uses the current macOS user's OpenSSH configuration, keys, agent socket, and `known_hosts` file.
 - Temporary SSH multiplexing sockets use hashed names below `/private/tmp/Nethriva-*`; Nethriva closes them when the last matching tab closes or the app quits and cleans stale process directories.
@@ -423,6 +455,10 @@ Opening an RDP connection places the desktop in the selected session tab. The de
 - Nethriva does not provide cloud synchronization, telemetry, or a hosted relay service in this release.
 
 ## Troubleshooting
+
+### macOS repeatedly asks for the login keychain password
+
+This macOS dialog asks for the **login keychain password**, not the remote SSH or RDP password. Nethriva reads saved credentials without rewriting them; opening a connection editor checks only whether a password exists. If macOS rejects the password, open Keychain Access and check whether the **login** keychain unlocks with your current Mac login password or a previous one. Do not reset the keychain just to dismiss the prompt: resetting can remove saved passwords. See [Apple's keychain-password guidance](https://support.apple.com/guide/keychain-access/kyca2429/mac).
 
 ### SSH tab connects but will not accept a password
 
@@ -467,7 +503,7 @@ Check network access, choose **File → Packages → Reset Package Caches**, and
 - SFTP does not automatically trust an unknown SSH host key; approve the host through an SSH tab first.
 - Telnet has no transport encryption or server-identity verification and should be limited to trusted management networks.
 - Connection and group data are local to the current Mac user and are not synchronized between Macs.
-- There is no automatic synchronization, credential-sharing service, or team vault.
+- There is no automatic synchronization, hosted credential-sharing service, or team vault. Reusable profiles are local to one Mac unless manually exported and imported.
 - RDP device redirection depends on both FreeRDP support and the remote Windows host's policy and configuration.
 - Gateway passwords do not have a separate saved-credential field in the current connection editor.
 - Apple Developer ID signing, notarization, automatic updates, and a polished installer remain future deployment work. Local ZIP and DMG packaging is automated for unsigned open-source releases.
@@ -482,6 +518,7 @@ Check network access, choose **File → Packages → Reset Package Caches**, and
 | Terminal emulation | SwiftTerm 1.20.0 |
 | SSH terminal transport | macOS OpenSSH and pseudo-terminal process hosting |
 | Telnet transport | Network.framework TCP with an embedded Telnet negotiation layer |
+| Serial transport | POSIX termios with discovered macOS `/dev/cu.*` devices |
 | SFTP operations | macOS SFTP with reusable OpenSSH control connections |
 | RDP | Bundled FreeRDP 3.31.1 and an Objective-C/Cocoa bridge |
 | Credentials | macOS Security framework and Keychain |
@@ -501,7 +538,16 @@ Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party compon
 
 ## Release notes
 
-### 0.11.0 (not yet published)
+### 0.12.0 (source version; release not yet published)
+
+- Added native Serial sessions with available-port discovery, configurable line settings, local echo, paste, and reconnect.
+- Added reusable credential profiles for SSH, Telnet, and RDP. Profiles share a Keychain password across linked connections and support password rotation without editing every client.
+- Added a separate Credential Profiles manager, connection-editor profile selection, and safe handling when an RDP login prompt saves credentials for a linked connection.
+- Extended connection-library import/export to preserve profile definitions and links, with profile passwords included only in encrypted exports.
+- Added Telnet login/username prompt assistance alongside saved-password assistance.
+- Improved connection organization with nested groups, search, multi-selection, drag-and-drop moves, and quick rename actions.
+
+### 0.11.0
 
 - Added native tabbed Telnet sessions for legacy devices, including option negotiation, resize updates, paste, saved-password assistance, reconnect, and clear plaintext warnings.
 - Hardened SFTP password delivery and command validation.
@@ -532,14 +578,15 @@ Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party compon
 ```text
 Nethriva/
 ├── App/                       Application entry point and shared state
-├── Models/                    Connections and session-tab models
-├── Services/                  Persistence, Keychain, SFTP, and FreeRDP adapters
+├── Models/                    Connections, credential profiles, and session-tab models
+├── Services/                  Persistence, Keychain, serial, SFTP, and FreeRDP adapters
 ├── Resources/Help/            Bundled offline HTML help manual
 ├── Resources/FreeRDP/         Bundled RDP runtime and third-party notices
 └── Views/
     ├── Help/                  Native help-window integration
     ├── Sidebar/               Connection manager and protocol editors
-    └── Sessions/              Tabs, terminals, Telnet, SFTP browser, and RDP surface
+    ├── Settings/              Credential Profiles manager
+    └── Sessions/              Tabs, terminals, Telnet, Serial, SFTP browser, and RDP surface
 NethrivaTests/               Model, persistence, lifecycle, and argument tests
 Vendor/NethrivaRDPBridge/    Source for the native embedded RDP bridge
 docs/                          Architecture and integration notes

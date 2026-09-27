@@ -4,7 +4,14 @@ import Security
 protocol CredentialVault {
     func save(password: String, for connectionID: UUID) throws
     func password(for connectionID: UUID) throws -> String?
+    func containsPassword(for connectionID: UUID) throws -> Bool
     func deletePassword(for connectionID: UUID) throws
+}
+
+extension CredentialVault {
+    func containsPassword(for connectionID: UUID) throws -> Bool {
+        try password(for: connectionID) != nil
+    }
 }
 
 enum KeychainError: LocalizedError {
@@ -64,20 +71,58 @@ final class KeychainService: CredentialVault {
 
     func password(for connectionID: UUID) throws -> String? {
         let account = connectionID.uuidString
+        return try Self.resolvePassword(
+            account: account,
+            currentService: service,
+            legacyServices: legacyServices,
+            read: { account, service in
+                try self.password(account: account, service: service)
+            },
+            migrate: { password in
+                try self.save(password: password, for: connectionID)
+            }
+        )
+    }
 
-        if let password = try password(account: account, service: service) {
-            try save(password: password, for: connectionID)
+    static func resolvePassword(
+        account: String,
+        currentService: String,
+        legacyServices: [String],
+        read: (String, String) throws -> String?,
+        migrate: (String) throws -> Void
+    ) throws -> String? {
+        // Reading an existing item must not update it. A write can prompt for
+        // additional Keychain authorization on every connection attempt.
+        if let password = try read(account, currentService) {
             return password
         }
 
         for legacyService in legacyServices {
-            if let password = try password(account: account, service: legacyService) {
-                try save(password: password, for: connectionID)
+            if let password = try read(account, legacyService) {
+                try migrate(password)
                 return password
             }
         }
 
         return nil
+    }
+
+    func containsPassword(for connectionID: UUID) throws -> Bool {
+        let account = connectionID.uuidString
+        for service in [service] + legacyServices {
+            var lookup = query(account: account, service: service)
+            // The editor needs only existence, not the protected password data.
+            lookup[kSecReturnAttributes as String] = true
+            lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(lookup as CFDictionary, &result)
+            if status == errSecSuccess { return true }
+            guard status == errSecItemNotFound else {
+                throw KeychainError.unexpectedStatus(status)
+            }
+        }
+        return false
     }
 
     func deletePassword(for connectionID: UUID) throws {

@@ -1,5 +1,7 @@
 import AppKit
+import CoreTransferable
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ConnectionSidebarView: View {
     @EnvironmentObject private var appState: AppState
@@ -8,41 +10,97 @@ struct ConnectionSidebarView: View {
 
     @State private var isPresentingNewGroup = false
     @State private var newGroupName = ""
+    @State private var newGroupParent: String?
+    @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
+    @State private var collapsedGroups: Set<String> = []
+    @State private var renameRequest: RemoteConnection?
+    @State private var renamedConnectionName = ""
+    @State private var renameGroupPath: String?
+    @State private var renamedGroupName = ""
     @State private var actionError: String?
+    @State private var selectedItems: Set<SidebarSelectionItem> = []
+    @State private var selectionAnchor: SidebarSelectionItem?
+    @State private var dropTargetGroup: String?
+    @State private var dropTargetConnectionID: UUID?
+    @State private var isFavoritesDropTarget = false
 
     var body: some View {
-        List(selection: $appState.selectedConnectionID) {
-            if !favorites.isEmpty {
-                Section("Favorites") {
-                    ForEach(favorites) { connection in
-                        row(connection)
+        List {
+            if isSearching {
+                Section("Search Results") {
+                    if searchResults.isEmpty {
+                        Label("No matching connections", systemImage: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(searchResults) { connection in
+                            row(connection)
+                        }
                     }
+                }
+            } else {
+                Section {
+                    if favorites.isEmpty {
+                        Text("Drop connections here to add favorites")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .dropDestination(for: SidebarDragPayload.self) { payloads, _ in
+                                acceptDrop(payloads, into: .favorites)
+                            } isTargeted: { targeted in
+                                isFavoritesDropTarget = targeted
+                            }
+                    } else {
+                        ForEach(favorites) { connection in
+                            row(connection)
+                        }
+                    }
+                } header: {
+                    Text("Favorites")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .background(isFavoritesDropTarget ? Color.accentColor.opacity(0.2) : Color.clear)
+                        .dropDestination(for: SidebarDragPayload.self) { payloads, _ in
+                            acceptDrop(payloads, into: .favorites)
+                        } isTargeted: { targeted in
+                            isFavoritesDropTarget = targeted
+                        }
                 }
             }
 
-            ForEach(groupNames, id: \.self) { groupName in
-                Section {
-                    let groupConnections = connections(in: groupName)
-                    ForEach(groupConnections) { connection in
-                        row(connection)
-                    }
-                    if groupConnections.isEmpty {
-                        Button {
-                            onNewConnection(groupName)
-                        } label: {
-                            Label("Add a connection", systemImage: "plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    groupHeader(groupName)
+            if !isSearching {
+                ForEach(rootGroupNames, id: \.self) { groupName in
+                    groupTree(groupName)
                 }
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("Nethriva")
+        .safeAreaInset(edge: .top) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search name or IP address", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .focused($isSearchFocused)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(8)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.bar)
+        }
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Menu {
@@ -53,8 +111,7 @@ struct ConnectionSidebarView: View {
                     }
 
                     Button {
-                        newGroupName = ""
-                        isPresentingNewGroup = true
+                        beginNewGroup(under: nil)
                     } label: {
                         Label("New Group", systemImage: "folder.badge.plus")
                     }
@@ -98,15 +155,43 @@ struct ConnectionSidebarView: View {
             .padding(10)
             .background(.bar)
         }
-        .alert("New Group", isPresented: $isPresentingNewGroup) {
+        .alert(newGroupParent == nil ? "New Group" : "New Subgroup", isPresented: $isPresentingNewGroup) {
             TextField("Group name", text: $newGroupName)
             Button("Cancel", role: .cancel) {}
             Button("Create") {
-                _ = appState.addGroup(newGroupName)
+                if let parent = newGroupParent {
+                    _ = appState.addSubgroup(newGroupName, under: parent)
+                    collapsedGroups.remove(parent)
+                } else {
+                    _ = appState.addGroup(newGroupName)
+                }
             }
-            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!isValidNewGroupName)
         } message: {
-            Text("Create an empty sidebar group. You can add connections to it afterward.")
+            Text(newGroupParent.map { "Create a subgroup inside \($0)." }
+                 ?? "Create a group in the sidebar. You can add connections or subgroups afterward.")
+        }
+        .alert("Rename Connection", isPresented: Binding(
+            get: { renameRequest != nil },
+            set: { if !$0 { renameRequest = nil } }
+        )) {
+            TextField("Connection name", text: $renamedConnectionName)
+            Button("Cancel", role: .cancel) { renameRequest = nil }
+            Button("Rename") { commitRename() }
+                .disabled(renamedConnectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Change only the display name; connection settings and saved credentials stay the same.")
+        }
+        .alert("Rename Group", isPresented: Binding(
+            get: { renameGroupPath != nil },
+            set: { if !$0 { renameGroupPath = nil } }
+        )) {
+            TextField("Group name", text: $renamedGroupName)
+            Button("Cancel", role: .cancel) { renameGroupPath = nil }
+            Button("Rename") { commitGroupRename() }
+                .disabled(!isValidRenamedGroupName)
+        } message: {
+            Text("Connections and subgroups will move with this group. Saved credentials are unchanged.")
         }
         .alert("Could Not Complete Action", isPresented: Binding(
             get: { actionError != nil },
@@ -116,6 +201,55 @@ struct ConnectionSidebarView: View {
         } message: {
             Text(actionError ?? "Unknown error")
         }
+        .onChange(of: appState.connectionSearchFocusRequest) { _, _ in
+            isSearchFocused = true
+        }
+        .onAppear {
+            if let selectedID = appState.selectedConnectionID {
+                let item = SidebarSelectionItem.connection(selectedID)
+                selectedItems = [item]
+                selectionAnchor = item
+            }
+        }
+        .onChange(of: appState.selectedConnectionID) { _, selectedID in
+            if let selectedID {
+                let item = SidebarSelectionItem.connection(selectedID)
+                if !selectedItems.contains(item) {
+                    selectedItems = [item]
+                    selectionAnchor = item
+                }
+            } else if selectedItems.contains(where: { if case .connection = $0 { true } else { false } }) {
+                selectedItems.removeAll()
+                selectionAnchor = nil
+            }
+        }
+        .onChange(of: searchText) { _, _ in
+            selectedItems.removeAll()
+            selectionAnchor = nil
+            appState.selectedConnectionID = nil
+        }
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var searchResults: [RemoteConnection] {
+        appState.connections
+            .filter { ConnectionSearch.matches($0, query: searchText) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var isValidNewGroupName: Bool {
+        let name = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !name.isEmpty && !name.contains("/")
+            && name.rangeOfCharacter(from: .controlCharacters) == nil
+    }
+
+    private var isValidRenamedGroupName: Bool {
+        let name = renamedGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !name.isEmpty && !name.contains("/")
+            && name.rangeOfCharacter(from: .controlCharacters) == nil
     }
 
     private var favorites: [RemoteConnection] {
@@ -124,13 +258,120 @@ struct ConnectionSidebarView: View {
 
     private var groupNames: [String] {
         var result = appState.groups
+        if !result.contains(where: { $0.caseInsensitiveCompare("Ungrouped") == .orderedSame }) {
+            result.append("Ungrouped")
+        }
         for connection in appState.connections where !connection.isFavorite {
             guard !result.contains(where: {
                 $0.caseInsensitiveCompare(connection.group) == .orderedSame
             }) else { continue }
             result.append(connection.group)
         }
+        for group in result {
+            let segments = group.split(separator: "/")
+            for prefix in segments.indices {
+                let ancestor = segments[0...prefix].joined(separator: "/")
+                if !result.contains(where: { $0.caseInsensitiveCompare(ancestor) == .orderedSame }) {
+                    result.append(ancestor)
+                }
+            }
+        }
         return result.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var rootGroupNames: [String] {
+        groupNames.filter { parentGroup(of: $0) == nil }
+    }
+
+    private var visibleItems: [SidebarSelectionItem] {
+        if isSearching {
+            return searchResults.map { .connection($0.id) }
+        }
+        var items = favorites.map { SidebarSelectionItem.connection($0.id) }
+        for group in rootGroupNames {
+            appendVisibleItems(in: group, to: &items)
+        }
+        return items
+    }
+
+    private func appendVisibleItems(in group: String, to items: inout [SidebarSelectionItem]) {
+        items.append(.group(group))
+        guard !collapsedGroups.contains(group) else { return }
+        items.append(contentsOf: connections(in: group).map { .connection($0.id) })
+        for child in childGroups(of: group) {
+            appendVisibleItems(in: child, to: &items)
+        }
+    }
+
+    private var currentModifiers: NSEvent.ModifierFlags {
+        NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
+    }
+
+    private func select(_ item: SidebarSelectionItem, modifiers: NSEvent.ModifierFlags) {
+        let updated = SidebarSelection.update(
+            selected: selectedItems,
+            anchor: selectionAnchor,
+            clicked: item,
+            visible: visibleItems,
+            modifiers: modifiers
+        )
+        selectedItems = updated.selected
+        selectionAnchor = updated.anchor
+        if case .connection(let id) = item, updated.selected.contains(item) {
+            appState.selectedConnectionID = id
+        } else if let selectedID = appState.selectedConnectionID,
+                  updated.selected.contains(.connection(selectedID)) {
+            return
+        } else {
+            appState.selectedConnectionID = appState.connections.first {
+                updated.selected.contains(.connection($0.id))
+            }?.id
+        }
+    }
+
+    private func childGroups(of parent: String) -> [String] {
+        groupNames.filter { parentGroup(of: $0)?.caseInsensitiveCompare(parent) == .orderedSame }
+    }
+
+    private func parentGroup(of group: String) -> String? {
+        guard let separator = group.lastIndex(of: "/") else { return nil }
+        return String(group[..<separator])
+    }
+
+    private func groupTree(_ groupName: String) -> some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { !collapsedGroups.contains(groupName) },
+            set: { expanded in
+                if expanded { collapsedGroups.remove(groupName) }
+                else { collapsedGroups.insert(groupName) }
+            }
+        )) {
+            let directConnections = connections(in: groupName)
+            let children = childGroups(of: groupName)
+            ForEach(directConnections) { connection in
+                row(connection)
+            }
+            ForEach(children, id: \.self) { child in
+                AnyView(groupTree(child))
+            }
+            if directConnections.isEmpty && children.isEmpty {
+                Button {
+                    onNewConnection(groupName)
+                } label: {
+                    Label("Add a connection", systemImage: "plus")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .dropDestination(for: SidebarDragPayload.self) { payloads, _ in
+                    acceptDrop(payloads, into: .group(groupName))
+                } isTargeted: { targeted in
+                    updateDropTarget(groupName, targeted: targeted)
+                }
+            }
+        } label: {
+            groupHeader(groupName)
+        }
     }
 
     private func connections(in groupName: String) -> [RemoteConnection] {
@@ -143,29 +384,85 @@ struct ConnectionSidebarView: View {
 
     private func hasConnections(in groupName: String) -> Bool {
         appState.connections.contains {
-            $0.kind != .localShell && $0.group.caseInsensitiveCompare(groupName) == .orderedSame
+            $0.kind != .localShell && (
+                $0.group.caseInsensitiveCompare(groupName) == .orderedSame
+                || $0.group.lowercased().hasPrefix(groupName.lowercased() + "/")
+            )
         }
     }
 
     @ViewBuilder
     private func groupHeader(_ groupName: String) -> some View {
-        HStack {
-            Label(groupName, systemImage: "folder")
-            Spacer()
+        let content = HStack {
+            Label(groupName.split(separator: "/").last.map(String.init) ?? groupName, systemImage: "folder")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    select(.group(groupName), modifiers: currentModifiers)
+                }
             Menu {
-                Button("Add Connection") {
-                    onNewConnection(groupName)
-                }
-                if !hasConnections(in: groupName) {
-                    Divider()
-                    Button("Delete Empty Group", role: .destructive) {
-                        appState.deleteGroup(groupName)
-                    }
-                }
+                groupActions(for: groupName)
             } label: {
                 Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
+        }
+        .frame(minHeight: 28)
+        .contentShape(Rectangle())
+        .contextMenu {
+            groupActions(for: groupName)
+        }
+        .background(
+            dropTargetGroup == groupName || selectedItems.contains(.group(groupName))
+                ? Color.accentColor.opacity(0.2) : Color.clear
+        )
+        .dropDestination(for: SidebarDragPayload.self) { payloads, _ in
+            acceptDrop(payloads, into: .group(groupName))
+        } isTargeted: { targeted in
+            updateDropTarget(groupName, targeted: targeted)
+        }
+
+        if groupName == "Ungrouped" {
+            content
+        } else {
+            let payload = dragPayload(for: .group(groupName))
+            content.onDrag {
+                payload.itemProvider
+            } preview: {
+                dragPreview(for: .group(groupName))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func groupActions(for groupName: String) -> some View {
+        Button("New Connection…") {
+            onNewConnection(groupName)
+        }
+        if groupName != "Ungrouped" {
+            Button("New Subgroup…") {
+                beginNewGroup(under: groupName)
+            }
+            Divider()
+            Button("Rename Group…") {
+                beginRenameGroup(groupName)
+            }
+            Button(collapsedGroups.contains(groupName) ? "Expand Group" : "Collapse Group") {
+                if collapsedGroups.contains(groupName) {
+                    collapsedGroups.remove(groupName)
+                } else {
+                    collapsedGroups.insert(groupName)
+                }
+            }
+            Button("Copy Group Path") {
+                copyToClipboard(groupName)
+            }
+            if !hasConnections(in: groupName) && childGroups(of: groupName).isEmpty {
+                Divider()
+                Button("Delete Empty Group", role: .destructive) {
+                    appState.deleteGroup(groupName)
+                }
+            }
         }
     }
 
@@ -185,6 +482,9 @@ struct ConnectionSidebarView: View {
             if connection.kind != .localShell {
                 Button("Edit…") {
                     onEditConnection(connection)
+                }
+                Button("Rename…") {
+                    beginRename(connection)
                 }
                 Button("Duplicate") {
                     duplicate(connection)
@@ -225,20 +525,21 @@ struct ConnectionSidebarView: View {
         }
     }
 
+    @ViewBuilder
     private func row(_ connection: RemoteConnection) -> some View {
-        ConnectionRowView(connection: connection)
+        let content = draggableRowLabel(connection)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .tag(connection.id)
             .contentShape(Rectangle())
             .simultaneousGesture(
                 TapGesture(count: 1)
                     .onEnded {
-                        appState.selectedConnectionID = connection.id
+                        select(.connection(connection.id), modifiers: currentModifiers)
                     }
             )
             .simultaneousGesture(
                 TapGesture(count: 2)
                     .onEnded {
+                        select(.connection(connection.id), modifiers: [])
                         appState.selectedConnectionID = connection.id
                         appState.open(connection)
                     }
@@ -257,6 +558,9 @@ struct ConnectionSidebarView: View {
                 if connection.kind != .localShell {
                     Button("Edit…") {
                         onEditConnection(connection)
+                    }
+                    Button("Rename…") {
+                        beginRename(connection)
                     }
                     Button("Duplicate") {
                         duplicate(connection)
@@ -293,6 +597,115 @@ struct ConnectionSidebarView: View {
                     }
                 }
             }
+
+        if connection.kind == .localShell {
+            content.background(
+                selectedItems.contains(.connection(connection.id))
+                    ? Color.accentColor.opacity(0.2) : Color.clear
+            )
+        } else {
+            content
+                .background(dropTargetConnectionID == connection.id
+                            || selectedItems.contains(.connection(connection.id))
+                            ? Color.accentColor.opacity(0.2) : Color.clear)
+                .dropDestination(for: SidebarDragPayload.self) { payloads, _ in
+                    acceptDrop(payloads, into: connection.isFavorite
+                               ? .favorites : .group(connection.group))
+                } isTargeted: { targeted in
+                    updateDropTarget(connection.id, targeted: targeted)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func draggableRowLabel(_ connection: RemoteConnection) -> some View {
+        if connection.kind == .localShell {
+            ConnectionRowView(connection: connection)
+        } else {
+            let payload = dragPayload(for: .connection(connection.id))
+            HStack(spacing: 4) {
+                ConnectionRowView(connection: connection)
+                    .onDrag {
+                        payload.itemProvider
+                    } preview: {
+                        dragPreview(for: .connection(connection.id))
+                    }
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 24, height: 28)
+                    .contentShape(Rectangle())
+                    .help("Drag this connection or the selected connections")
+                    .onDrag {
+                        payload.itemProvider
+                    } preview: {
+                        dragPreview(for: .connection(connection.id))
+                    }
+            }
+        }
+    }
+
+    private enum DropDestination {
+        case group(String)
+        case favorites
+    }
+
+    private func updateDropTarget(_ group: String, targeted: Bool) {
+        if targeted { dropTargetGroup = group }
+        else if dropTargetGroup == group { dropTargetGroup = nil }
+    }
+
+    private func updateDropTarget(_ connectionID: UUID, targeted: Bool) {
+        if targeted { dropTargetConnectionID = connectionID }
+        else if dropTargetConnectionID == connectionID { dropTargetConnectionID = nil }
+    }
+
+    private func dragPayload(for item: SidebarSelectionItem) -> SidebarDragPayload {
+        let selection = selectedItems.contains(item) ? selectedItems : [item]
+        return SidebarDragPayload(
+            connectionIDs: appState.connections
+                .filter { selection.contains(.connection($0.id)) && $0.kind != .localShell }
+                .map(\.id),
+            groupPaths: appState.groups.filter {
+                selection.contains(.group($0)) && $0.caseInsensitiveCompare("Ungrouped") != .orderedSame
+            }
+        )
+    }
+
+    private func dragPreview(for item: SidebarSelectionItem) -> some View {
+        let payload = dragPayload(for: item)
+        let count = payload.connectionIDs.count + payload.groupPaths.count
+        return Label("\(count) \(count == 1 ? "item" : "items")", systemImage: "folder")
+            .font(.callout.weight(.medium))
+            .padding(10)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func acceptDrop(_ payloads: [SidebarDragPayload], into destination: DropDestination) -> Bool {
+        guard let payload = payloads.first else { return false }
+        do {
+            switch destination {
+            case .group(let group):
+                try appState.moveSidebarItems(
+                    withConnectionIDs: Set(payload.connectionIDs),
+                    groupPaths: Set(payload.groupPaths),
+                    toGroup: group
+                )
+                collapsedGroups.remove(group)
+            case .favorites:
+                guard payload.groupPaths.isEmpty else {
+                    throw ConnectionMoveError.groupsCannotBeFavorites
+                }
+                try appState.addConnectionsToFavorites(withIDs: Set(payload.connectionIDs))
+            }
+            selectedItems.removeAll()
+            selectionAnchor = nil
+            appState.selectedConnectionID = nil
+            return true
+        } catch {
+            actionError = error.localizedDescription
+            return false
+        }
     }
 
     private func duplicate(_ connection: RemoteConnection) {
@@ -303,6 +716,60 @@ struct ConnectionSidebarView: View {
         }
     }
 
+    private func beginNewGroup(under parent: String?) {
+        newGroupName = ""
+        newGroupParent = parent
+        isPresentingNewGroup = true
+    }
+
+    private func beginRename(_ connection: RemoteConnection) {
+        renamedConnectionName = connection.name
+        renameRequest = connection
+    }
+
+    private func beginRenameGroup(_ group: String) {
+        renameGroupPath = group
+        renamedGroupName = group.split(separator: "/").last.map(String.init) ?? group
+    }
+
+    private func commitGroupRename() {
+        guard let previousPath = renameGroupPath else { return }
+        do {
+            let updatedPath = try appState.renameGroup(previousPath, to: renamedGroupName)
+            selectedItems = Set(selectedItems.map { item in
+                guard case .group(let path) = item else { return item }
+                return .group(rebasedGroupPath(path, from: previousPath, to: updatedPath))
+            })
+            if case .group(let path) = selectionAnchor {
+                selectionAnchor = .group(rebasedGroupPath(path, from: previousPath, to: updatedPath))
+            }
+            collapsedGroups = Set(collapsedGroups.map {
+                rebasedGroupPath($0, from: previousPath, to: updatedPath)
+            })
+        } catch {
+            actionError = error.localizedDescription
+        }
+        renameGroupPath = nil
+    }
+
+    private func rebasedGroupPath(_ path: String, from old: String, to new: String) -> String {
+        if path.caseInsensitiveCompare(old) == .orderedSame { return new }
+        if path.lowercased().hasPrefix(old.lowercased() + "/") {
+            return new + path.dropFirst(old.count)
+        }
+        return path
+    }
+
+    private func commitRename() {
+        guard let connection = renameRequest else { return }
+        do {
+            try appState.rename(connection, to: renamedConnectionName)
+        } catch {
+            actionError = error.localizedDescription
+        }
+        renameRequest = nil
+    }
+
     private func copyToClipboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -310,11 +777,91 @@ struct ConnectionSidebarView: View {
     }
 
     private func sshCommand(for connection: RemoteConnection) -> String {
-        let destination = connection.username.isEmpty
+        let resolved = appState.resolvedConnection(for: connection)
+        let destination = resolved.username.isEmpty
             ? connection.host
-            : "\(connection.username)@\(connection.host)"
+            : "\(resolved.username)@\(connection.host)"
         return connection.port == ConnectionKind.ssh.defaultPort
             ? "ssh \(destination)"
             : "ssh -p \(connection.port) \(destination)"
+    }
+}
+
+enum SidebarSelectionItem: Hashable {
+    case connection(UUID)
+    case group(String)
+
+    var isGroup: Bool {
+        if case .group = self { return true }
+        return false
+    }
+}
+
+enum SidebarSelection {
+    static func update(
+        selected: Set<SidebarSelectionItem>,
+        anchor: SidebarSelectionItem?,
+        clicked: SidebarSelectionItem,
+        visible: [SidebarSelectionItem],
+        modifiers: NSEvent.ModifierFlags
+    ) -> (selected: Set<SidebarSelectionItem>, anchor: SidebarSelectionItem?) {
+        if modifiers.contains(.shift),
+           let anchor,
+           anchor.isGroup == clicked.isGroup,
+           let first = visible.firstIndex(of: anchor),
+           let last = visible.firstIndex(of: clicked) {
+            let range = visible[min(first, last)...max(first, last)].filter {
+                switch (anchor, $0) {
+                case (.connection, .connection), (.group, .group): true
+                default: false
+                }
+            }
+            let selectedRange = Set(range)
+            return (
+                modifiers.contains(.command) ? selected.union(selectedRange) : selectedRange,
+                anchor
+            )
+        }
+        if modifiers.contains(.command) {
+            var updated = selected
+            if !updated.insert(clicked).inserted {
+                updated.remove(clicked)
+            }
+            return (updated, clicked)
+        }
+        return ([clicked], clicked)
+    }
+}
+
+struct SidebarDragPayload: Codable, Transferable, Equatable {
+    let connectionIDs: [UUID]
+    let groupPaths: [String]
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .nethrivaSidebarItems)
+    }
+
+    var itemProvider: NSItemProvider {
+        let provider = NSItemProvider()
+        provider.register(self)
+        return provider
+    }
+}
+
+private extension UTType {
+    static let nethrivaSidebarItems = UTType(
+        exportedAs: "com.vitalii.nethriva.sidebar-items",
+        conformingTo: .data
+    )
+}
+
+enum ConnectionSearch {
+    static func matches(_ connection: RemoteConnection, query: String) -> Bool {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !terms.isEmpty else { return true }
+        let searchable = [connection.name, connection.host, connection.group, String(connection.port)]
+        return terms.allSatisfy { term in
+            searchable.contains { $0.localizedStandardContains(term) }
+        }
     }
 }

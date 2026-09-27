@@ -1,16 +1,18 @@
 # Nethriva integration and packaging notes
 
-Nethriva integrates SwiftTerm for local, SSH, and Telnet sessions, macOS OpenSSH/SFTP for compatibility with the user's existing configuration, Network.framework for Telnet TCP transport, and FreeRDP's native Cocoa client view for RDP. Passwords are stored in Keychain and are not included in the JSON connection store.
+Nethriva integrates SwiftTerm for local, SSH, Telnet, and Serial sessions, macOS OpenSSH/SFTP for compatibility with the user's existing configuration, Network.framework for Telnet TCP transport, POSIX termios for local serial adapters, and FreeRDP's native Cocoa client view for RDP. Passwords are stored in Keychain and are not included in the JSON connection store.
 
 Nethriva uses stable persistence and Keychain identifiers so Release application updates continue to find saved connections, groups, and credentials. Xcode Debug builds use separate preferences and a separate Keychain service to keep development records out of the user's Release-profile library and distribution workflow.
 
 Connection libraries can be exported without credentials as `.nethriva` JSON archives or with credentials as password-protected `.nethriva-secure` archives. Credential archives encrypt the complete payload with AES-256-GCM using a PBKDF2-HMAC-SHA256 derived key. Imports validate schema and record bounds, preview their contents, preserve empty groups, and offer keep-or-replace handling for matching UUIDs before saving credentials to Keychain.
 
+Reusable credential profiles persist only their name, username, and optional RDP domain in a versioned local store with a last-known-good backup. Each profile password uses a separate UUID-keyed Keychain item. Connections may reference a profile UUID; sessions resolve current username/domain when opened and fetch the profile password through Keychain. Password-free archives contain profile metadata and links but no passwords. Encrypted archives may include individual and profile passwords. Old v1 archives without profile fields still decode.
+
 An app-wide Settings scene persists display preferences in the active Debug or Release defaults profile. Sidebar and session headers independently control endpoint and username visibility; usernames are hidden by default. The SSH and Telnet transport banners avoid writing account details into terminal history. Remote-generated terminal text remains under the remote system's control.
 
 Version 0.10.0 adds a complete offline HTML help manual bundled in the application resources. A native SwiftUI help window hosts it through WebKit, with light/dark appearance support, section navigation, full-text highlighting, print styling, a Help-menu command, Command-?, and a main-window toolbar entry.
 
-Version 0.11.0 consolidates Telnet, connection import/export, isolated Debug data, privacy settings, credential and SFTP hardening, and the in-app RDP authentication dialog improvements. It is the current project version until a separate GitHub release is published.
+Version 0.11.0 consolidated Telnet, connection import/export, isolated Debug data, privacy settings, credential and SFTP hardening, and the in-app RDP authentication dialog improvements. Version 0.12.0 adds native Serial sessions, reusable Keychain-backed credential profiles, profile-aware encrypted import/export, Telnet username assistance, and richer sidebar organization. The 0.12.0 source version has not yet been published as a GitHub release.
 
 ## SSH, Telnet, and SwiftTerm
 
@@ -24,7 +26,9 @@ SwiftTerm 1.20.0 is pinned through Swift Package Manager. `LocalProcessTerminalV
 
 Every SSH tab now also includes a compact, resizable SFTP tree beside the live terminal. Directory contents load on expansion. Local files and folders can be dropped onto the tree for recursive upload, remote items can be dragged between remote folders to move them, and dragging a remote item to Finder performs a file-promise download. The full SFTP tab remains available for detailed listings and bulk operations. OpenSSH connection multiplexing shares an authenticated transport between matching terminal and SFTP processes, eliminating repeated key exchange and authentication during folder navigation. Masters are explicitly closed with the last matching tab and during app shutdown; stale per-process socket directories are cleaned on launch. SFTP passwords enter the helper through a private pipe, commands are passed as separate values, and control characters are rejected from the textual command channel.
 
-Telnet uses a Network.framework TCP connection and a small stateful negotiation layer for echo, suppress-go-ahead, terminal type, and window-size options. The user interface marks Telnet as unencrypted and only offers saved-password submission as an explicit action.
+Telnet uses a Network.framework TCP connection and a small stateful negotiation layer for echo, suppress-go-ahead, terminal type, and window-size options. The user interface marks Telnet as unencrypted and offers saved-username or saved-password submission only as explicit actions at matching prompts.
+
+Serial uses `/dev/cu.*` discovery and opens the selected local device with POSIX termios, nonblocking reads/writes, and a SwiftTerm tab. Connection records store device path, baud, framing, flow control, and local echo. No username or password is stored for Serial. The connection editor refreshes available adapters while open; an absent adapter produces an error and can be retried after reconnection.
 
 Reference: [SwiftTerm repository and integration notes](https://github.com/migueldeicaza/SwiftTerm).
 
@@ -57,6 +61,7 @@ References: [FreeRDP repository](https://github.com/FreeRDP/FreeRDP) and [offici
 9. ~~Native Telnet sessions for legacy infrastructure~~ — complete
 10. ~~CI, issue templates, redacted diagnostics, release scripts, checklist, and compatibility matrix~~ — complete
 11. ~~Connection-library import/export, optional encrypted credentials, and isolated Debug data~~ — complete
-12. Universal runtime and optional Developer ID signing/notarization — future distribution hardening
+12. ~~Native Serial sessions and reusable credential profiles~~ — complete in 0.12.0
+13. Universal runtime and optional Developer ID signing/notarization — future distribution hardening
 
 The existing session-tab architecture keeps terminal, file-browser, and RDP client lifecycles independent while preserving all open sessions during tab switches.

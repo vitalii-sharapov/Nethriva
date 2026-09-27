@@ -44,6 +44,7 @@ enum DiagnosticReportService {
         Local: \(counts[.localShell, default: 0])
         SSH: \(counts[.ssh, default: 0])
         Telnet: \(counts[.telnet, default: 0])
+        Serial: \(counts[.serial, default: 0])
         RDP: \(counts[.rdp, default: 0])
 
         Bundled RDP bridge present: \(runtimePresent ? "Yes" : "No")

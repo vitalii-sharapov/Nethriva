@@ -4,33 +4,37 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
-    @State private var editorRequest: ConnectionEditorRequest?
 
     var body: some View {
         NavigationSplitView {
             ConnectionSidebarView(
                 onNewConnection: { group in
-                    editorRequest = ConnectionEditorRequest(initialGroup: group)
+                    openWindow(
+                        id: "connection-editor",
+                        value: ConnectionEditorRequest(initialGroup: group)
+                    )
                 },
                 onEditConnection: { connection in
-                    editorRequest = ConnectionEditorRequest(connection: connection)
+                    openWindow(
+                        id: "connection-editor",
+                        value: ConnectionEditorRequest(connection: connection)
+                    )
                 }
             )
                 .navigationSplitViewColumnWidth(min: 220, ideal: 270, max: 360)
         } detail: {
             SessionWorkspaceView()
         }
-        .sheet(item: $editorRequest) { request in
-            ConnectionEditorView(
-                connection: request.connection,
-                initialGroup: request.initialGroup
-            )
-        }
-        .sheet(item: $appState.connectionTransferRequest) { request in
-            ConnectionTransferView(request: request)
-                .environmentObject(appState)
-        }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    openWindow(id: "credential-manager")
+                } label: {
+                    Label("Credential Profiles", systemImage: "key.horizontal")
+                }
+                .help("Manage reusable usernames and Keychain passwords")
+            }
+
             ToolbarItem {
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
@@ -48,7 +52,7 @@ struct ContentView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    editorRequest = ConnectionEditorRequest()
+                    openWindow(id: "connection-editor", value: ConnectionEditorRequest())
                 } label: {
                     Label("New Connection", systemImage: "plus")
                 }
@@ -81,19 +85,25 @@ struct ContentView: View {
         } message: {
             Text(appState.persistenceNotice ?? "")
         }
+        .onChange(of: appState.connectionTransferRequest?.id) { _, _ in
+            guard let request = appState.connectionTransferRequest else { return }
+            openWindow(id: "connection-transfer", value: request)
+            appState.connectionTransferRequest = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             appState.shutdownSSHTransports()
         }
     }
 }
 
-private struct ConnectionEditorRequest: Identifiable {
-    let id = UUID()
-    var connection: RemoteConnection?
-    var initialGroup: String?
+struct ConnectionEditorRequest: Codable, Hashable, Identifiable {
+    let id: UUID
+    let connectionID: UUID?
+    let initialGroup: String?
 
     init(connection: RemoteConnection? = nil, initialGroup: String? = nil) {
-        self.connection = connection
+        self.id = connection?.id ?? UUID()
+        self.connectionID = connection?.id
         self.initialGroup = initialGroup
     }
 }

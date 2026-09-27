@@ -1,7 +1,37 @@
+import AppKit
+import CoreTransferable
 import XCTest
 @testable import Nethriva
 
 final class NethrivaTests: XCTestCase {
+    func testAppExportsSidebarDragType() {
+        let declarations = Bundle.main.infoDictionary?["UTExportedTypeDeclarations"] as? [[String: Any]]
+        let sidebarType = declarations?.first {
+            $0["UTTypeIdentifier"] as? String == "com.vitalii.nethriva.sidebar-items"
+        }
+        XCTAssertNotNil(sidebarType)
+        XCTAssertTrue((sidebarType?["UTTypeConformsTo"] as? [String])?.contains("public.data") == true)
+    }
+
+    func testSidebarDragPayloadTransfersSelectedConnections() {
+        let selectedIDs = [UUID(), UUID(), UUID()]
+        let payload = SidebarDragPayload(connectionIDs: selectedIDs, groupPaths: [])
+        let provider = payload.itemProvider
+        let loaded = expectation(description: "Sidebar drag payload loads")
+
+        _ = provider.loadTransferable(type: SidebarDragPayload.self) { result in
+            switch result {
+            case .success(let decoded):
+                XCTAssertEqual(decoded, payload)
+            case .failure(let error):
+                XCTFail("Could not load sidebar drag payload: \(error)")
+            }
+            loaded.fulfill()
+        }
+
+        wait(for: [loaded], timeout: 5)
+    }
+
     func testBundledHelpCoversCoreWorkflows() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -15,6 +45,8 @@ final class NethrivaTests: XCTestCase {
             "Local Terminal",
             "SSH sessions",
             "Telnet sessions",
+            "Serial sessions",
+            "Credential profiles",
             "Remote files beside SSH",
             "SFTP browser",
             "Embedded RDP",
@@ -31,10 +63,170 @@ final class NethrivaTests: XCTestCase {
         let ssh = RemoteConnection(name: "Server", kind: .ssh)
         let telnet = RemoteConnection(name: "Switch", kind: .telnet)
         let rdp = RemoteConnection(name: "Desktop", kind: .rdp)
+        let serial = RemoteConnection(name: "Console", kind: .serial)
 
         XCTAssertEqual(ssh.port, 22)
         XCTAssertEqual(telnet.port, 23)
         XCTAssertEqual(rdp.port, 3389)
+        XCTAssertEqual(serial.port, 0)
+    }
+
+    func testSerialSettingsRoundTripAndValidateDevicePaths() throws {
+        let original = RemoteConnection(
+            name: "Fictional switch console",
+            kind: .serial,
+            host: "/dev/cu.usbserial-example",
+            serialBaudRate: 9_600,
+            serialDataBits: 7,
+            serialParity: .even,
+            serialStopBits: 2,
+            serialFlowControl: .hardware,
+            serialLocalEcho: true
+        )
+        let decoded = try JSONDecoder().decode(RemoteConnection.self, from: JSONEncoder().encode(original))
+        XCTAssertEqual(decoded, original)
+        XCTAssertTrue(SerialPortConfiguration(connection: decoded).isValid)
+        XCTAssertEqual(decoded.endpointDescription, "/dev/cu.usbserial-example")
+        XCTAssertFalse(SerialPortDiscovery.isValidDevicePath("/dev/cu."))
+        XCTAssertFalse(SerialPortDiscovery.isValidDevicePath("/dev/tty."))
+        XCTAssertFalse(SerialPortDiscovery.isValidDevicePath("/dev/cu.foo/../../private"))
+        XCTAssertFalse(SerialPortDiscovery.isValidDevicePath("/tmp/cu.example"))
+    }
+
+    func testSerialPortDiscoveryListsOnlyCalloutDevices() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for name in ["cu.usbserial-B", "cu.usbmodem-A", "tty.usbserial-B", "notes.txt"] {
+            XCTAssertTrue(FileManager.default.createFile(atPath: directory.appendingPathComponent(name).path, contents: Data()))
+        }
+        XCTAssertEqual(SerialPortDiscovery.availablePorts(in: directory.path), [
+            directory.appendingPathComponent("cu.usbmodem-A").path,
+            directory.appendingPathComponent("cu.usbserial-B").path,
+        ])
+    }
+
+    func testSerialConnectionArchivePreservesSettingsWithoutCredentials() throws {
+        let connection = RemoteConnection(
+            name: "Fictional console",
+            kind: .serial,
+            host: "/dev/cu.usbserial-example",
+            group: "Lab/Consoles",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            serialBaudRate: 9_600,
+            serialFlowControl: SerialFlowControl.none
+        )
+        let archive = ConnectionArchive(
+            exportedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            groups: ["Lab", "Lab/Consoles"],
+            connections: [connection]
+        )
+        let data = try ConnectionTransferService.encodePlain(archive)
+        guard case .plain(let decoded) = try ConnectionTransferService.inspect(data).content else {
+            return XCTFail("Expected serial connection in plain archive")
+        }
+        XCTAssertEqual(decoded, archive)
+
+        let invalid = ConnectionArchive(
+            groups: [],
+            connections: [connection],
+            credentials: [.init(connectionID: connection.id, password: "unit-test-placeholder")]
+        )
+        XCTAssertThrowsError(try ConnectionTransferService.encodeEncrypted(invalid, password: "example-password"))
+    }
+
+    @MainActor
+    func testSharedCredentialProfileResolvesAcrossConnectionsAndSurvivesExport() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let vault = TestCredentialVault()
+        let profileStore = UserDefaultsCredentialProfileStore(defaults: defaults, key: "profiles")
+        let state = AppState(
+            store: UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections"),
+            groupStore: UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups"),
+            profileStore: profileStore,
+            credentialVault: vault
+        )
+        let profile = CredentialProfile(name: "Fictional network team", username: "operator", domain: "EXAMPLE")
+        try state.saveProfile(profile, password: "unit-test-placeholder")
+        let ssh = RemoteConnection(
+            name: "Fictional router", kind: .ssh, host: "router.example.invalid",
+            credentialProfileID: profile.id
+        )
+        let rdp = RemoteConnection(
+            name: "Fictional desktop", kind: .rdp, host: "desktop.example.invalid",
+            credentialProfileID: profile.id
+        )
+        try state.add(ssh, password: nil)
+        try state.add(rdp, password: nil)
+        XCTAssertEqual(state.resolvedConnection(for: ssh).username, "operator")
+        XCTAssertEqual(state.resolvedConnection(for: rdp).rdpDomain, "EXAMPLE")
+        XCTAssertEqual(try state.password(for: ssh), "unit-test-placeholder")
+        XCTAssertEqual(try state.password(for: rdp), "unit-test-placeholder")
+        XCTAssertThrowsError(try state.deleteProfile(profile))
+
+        let updated = CredentialProfile(id: profile.id, name: profile.name, username: "new-operator", domain: "EXAMPLE")
+        try state.saveProfile(updated, password: "rotated-unit-test-placeholder")
+        XCTAssertEqual(state.resolvedConnection(for: ssh).username, "new-operator")
+        XCTAssertEqual(try state.password(for: rdp), "rotated-unit-test-placeholder")
+
+        let plain = try state.makeConnectionArchive(includeCredentials: false)
+        XCTAssertEqual(plain.profiles, [updated])
+        XCTAssertTrue(plain.profileCredentials.isEmpty)
+        let plainData = try ConnectionTransferService.encodePlain(plain)
+        XCTAssertFalse(String(decoding: plainData, as: UTF8.self).contains("rotated-unit-test-placeholder"))
+        let secure = try state.makeConnectionArchive(includeCredentials: true)
+        XCTAssertEqual(secure.profileCredentials.count, 1)
+        XCTAssertTrue(secure.credentials.isEmpty)
+        let encrypted = try ConnectionTransferService.encodeEncrypted(
+            secure, password: "archive-test-password", iterations: 10_000
+        )
+        let decoded = try ConnectionTransferService.decodeEncrypted(encrypted, password: "archive-test-password")
+        XCTAssertEqual(decoded.profileCredentials.first?.password, "rotated-unit-test-placeholder")
+
+        let restoredDefaults = UserDefaults(suiteName: #function + ".restored")!
+        restoredDefaults.removePersistentDomain(forName: #function + ".restored")
+        defer { restoredDefaults.removePersistentDomain(forName: #function + ".restored") }
+        let restoredVault = TestCredentialVault()
+        let restored = AppState(
+            store: UserDefaultsConnectionStore(defaults: restoredDefaults, storageKey: "connections"),
+            groupStore: UserDefaultsConnectionGroupStore(defaults: restoredDefaults, storageKey: "groups"),
+            profileStore: UserDefaultsCredentialProfileStore(defaults: restoredDefaults, key: "profiles"),
+            credentialVault: restoredVault
+        )
+        let summary = try restored.importConnectionArchive(decoded, conflictPolicy: .keepExisting)
+        XCTAssertEqual(summary.profilesAdded, 1)
+        XCTAssertEqual(summary.credentialsImported, 1)
+        XCTAssertEqual(try restored.password(for: ssh), "rotated-unit-test-placeholder")
+    }
+
+    @MainActor
+    func testRDPInteractiveSaveDoesNotChangeSharedProfile() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let vault = TestCredentialVault()
+        let state = AppState(
+            store: UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections"),
+            groupStore: UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups"),
+            credentialVault: vault
+        )
+        let profile = CredentialProfile(name: "Fictional domain admin", username: "shared", domain: "EXAMPLE")
+        try state.saveProfile(profile, password: "shared-placeholder")
+        let first = RemoteConnection(name: "First", kind: .rdp, host: "first.example.invalid", credentialProfileID: profile.id)
+        let second = RemoteConnection(name: "Second", kind: .rdp, host: "second.example.invalid", credentialProfileID: profile.id)
+        try state.add(first, password: nil)
+        try state.add(second, password: nil)
+
+        let saved = try state.saveRDPLogin(
+            .init(username: "individual", password: "individual-placeholder", domain: "OTHER"),
+            for: first.id
+        )
+        XCTAssertNil(saved.credentialProfileID)
+        XCTAssertEqual(try state.password(for: saved), "individual-placeholder")
+        XCTAssertEqual(try state.password(for: second), "shared-placeholder")
+        XCTAssertEqual(state.resolvedConnection(for: second).username, "shared")
     }
 
     func testLegacyConnectionDataStillDecodes() throws {
@@ -648,6 +840,44 @@ final class NethrivaTests: XCTestCase {
 #endif
     }
 
+    func testReadingCurrentKeychainPasswordDoesNotRewriteIt() throws {
+        var servicesRead: [String] = []
+        var migrationCount = 0
+        let result = try KeychainService.resolvePassword(
+            account: "fictional-connection",
+            currentService: "test.current.credentials",
+            legacyServices: ["test.legacy.credentials"],
+            read: { _, service in
+                servicesRead.append(service)
+                return service == "test.current.credentials" ? "unit-test-placeholder" : nil
+            },
+            migrate: { _ in migrationCount += 1 }
+        )
+
+        XCTAssertEqual(result, "unit-test-placeholder")
+        XCTAssertEqual(servicesRead, ["test.current.credentials"])
+        XCTAssertEqual(migrationCount, 0)
+    }
+
+    func testLegacyKeychainPasswordMigratesOnlyWhenCurrentItemIsMissing() throws {
+        var servicesRead: [String] = []
+        var migratedPassword: String?
+        let result = try KeychainService.resolvePassword(
+            account: "fictional-connection",
+            currentService: "test.current.credentials",
+            legacyServices: ["test.legacy.credentials"],
+            read: { _, service in
+                servicesRead.append(service)
+                return service == "test.legacy.credentials" ? "unit-test-placeholder" : nil
+            },
+            migrate: { migratedPassword = $0 }
+        )
+
+        XCTAssertEqual(result, "unit-test-placeholder")
+        XCTAssertEqual(servicesRead, ["test.current.credentials", "test.legacy.credentials"])
+        XCTAssertEqual(migratedPassword, "unit-test-placeholder")
+    }
+
     @MainActor
     func testDisplaySettingsHideUsernamesByDefaultAndPersistChoices() {
         let suite = #function
@@ -777,6 +1007,316 @@ final class NethrivaTests: XCTestCase {
 
         let reloadedState = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
         XCTAssertTrue(reloadedState.groups.contains("Production"))
+    }
+
+    @MainActor
+    func testNestedGroupsPersistAndCannotDeleteNonemptyParent() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+
+        XCTAssertTrue(state.addGroup("Production"))
+        XCTAssertTrue(state.addSubgroup("Servers", under: "Production"))
+        XCTAssertTrue(state.addSubgroup("Linux", under: "Production/Servers"))
+        XCTAssertFalse(state.addSubgroup("Invalid/Name", under: "Production"))
+        XCTAssertEqual(state.groups, ["Production", "Production/Servers", "Production/Servers/Linux"])
+
+        let connection = RemoteConnection(
+            name: "Web Server",
+            kind: .ssh,
+            host: "192.0.2.10",
+            group: "Production/Servers/Linux"
+        )
+        try state.add(connection, password: nil)
+        state.deleteGroup("Production")
+        state.deleteGroup("Production/Servers/Linux")
+        XCTAssertTrue(state.groups.contains("Production"))
+        XCTAssertTrue(state.groups.contains("Production/Servers/Linux"))
+
+        let reloaded = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertEqual(reloaded.connections.first(where: { $0.id == connection.id })?.group,
+                       "Production/Servers/Linux")
+        XCTAssertTrue(reloaded.groups.contains("Production/Servers"))
+    }
+
+    @MainActor
+    func testQuickRenameUpdatesSavedConnectionAndOpenTab() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        let connection = RemoteConnection(name: "Old Name", kind: .ssh, host: "192.0.2.20")
+        try state.add(connection, password: nil)
+        state.open(connection)
+
+        try state.rename(connection, to: "  New Name  ")
+
+        XCTAssertEqual(state.connections.first(where: { $0.id == connection.id })?.name, "New Name")
+        XCTAssertEqual(state.tabs.first?.title, "New Name")
+        XCTAssertEqual(try store.load().connections.first(where: { $0.id == connection.id })?.name,
+                       "New Name")
+    }
+
+    func testSearchMatchesNameHostGroupAndMultipleTerms() {
+        let connection = RemoteConnection(
+            name: "Core Router",
+            kind: .ssh,
+            host: "192.0.2.30",
+            group: "Network/Edge"
+        )
+
+        XCTAssertTrue(ConnectionSearch.matches(connection, query: "router"))
+        XCTAssertTrue(ConnectionSearch.matches(connection, query: "192.0.2"))
+        XCTAssertTrue(ConnectionSearch.matches(connection, query: "edge 192.0.2"))
+        XCTAssertFalse(ConnectionSearch.matches(connection, query: "router 203.0.113"))
+    }
+
+    @MainActor
+    func testMovingMultipleConnectionsIntoNestedGroupPersistsTogether() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        let first = RemoteConnection(name: "First", kind: .ssh, host: "192.0.2.41")
+        let second = RemoteConnection(name: "Second", kind: .rdp, host: "192.0.2.42")
+        try state.add(first, password: nil)
+        try state.add(second, password: nil)
+        XCTAssertTrue(state.addGroup("Lab/Servers"))
+        state.toggleFavorite(first)
+
+        try state.moveConnections(withIDs: [first.id, second.id], toGroup: "Lab/Servers")
+
+        let moved = try store.load().connections.filter { [first.id, second.id].contains($0.id) }
+        XCTAssertEqual(moved.count, 2)
+        XCTAssertTrue(moved.allSatisfy { $0.group == "Lab/Servers" && !$0.isFavorite })
+        XCTAssertEqual(state.selectedConnectionID, second.id)
+
+        try state.addConnectionsToFavorites(withIDs: [first.id, second.id])
+        let favorited = try store.load().connections.filter { [first.id, second.id].contains($0.id) }
+        XCTAssertTrue(favorited.allSatisfy(\.isFavorite))
+        XCTAssertTrue(favorited.allSatisfy { $0.group == "Lab/Servers" })
+    }
+
+    @MainActor
+    func testFailedBatchMoveRestoresEveryConnection() {
+        let first = RemoteConnection(name: "First", kind: .ssh, host: "192.0.2.51")
+        let second = RemoteConnection(name: "Second", kind: .ssh, host: "192.0.2.52")
+        let store = FailOnSaveConnectionStore(connections: [.localShell, first, second])
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Other"))
+        store.shouldFail = true
+
+        XCTAssertThrowsError(try state.moveConnections(withIDs: [first.id, second.id], toGroup: "Other"))
+        XCTAssertTrue(state.connections.filter { [first.id, second.id].contains($0.id) }
+            .allSatisfy { $0.group == "Ungrouped" && !$0.isFavorite })
+        XCTAssertThrowsError(try state.addConnectionsToFavorites(withIDs: [first.id, second.id]))
+        XCTAssertTrue(state.connections.filter { [first.id, second.id].contains($0.id) }
+            .allSatisfy { !$0.isFavorite })
+    }
+
+    func testSidebarCommandAndShiftSelectionForConnectionsAndFolders() {
+        let first = SidebarSelectionItem.connection(UUID())
+        let second = SidebarSelectionItem.connection(UUID())
+        let third = SidebarSelectionItem.connection(UUID())
+        let firstGroup = SidebarSelectionItem.group("Lab")
+        let secondGroup = SidebarSelectionItem.group("Production")
+        let visible = [firstGroup, first, second, secondGroup, third]
+
+        let initial = SidebarSelection.update(
+            selected: [], anchor: nil, clicked: first, visible: visible, modifiers: []
+        )
+        let range = SidebarSelection.update(
+            selected: initial.selected, anchor: initial.anchor,
+            clicked: third, visible: visible, modifiers: [.shift]
+        )
+        XCTAssertEqual(range.selected, [first, second, third])
+        let toggled = SidebarSelection.update(
+            selected: range.selected, anchor: range.anchor,
+            clicked: second, visible: visible, modifiers: [.command]
+        )
+        XCTAssertEqual(toggled.selected, [first, third])
+
+        let groupStart = SidebarSelection.update(
+            selected: [], anchor: nil, clicked: firstGroup, visible: visible, modifiers: []
+        )
+        let groupRange = SidebarSelection.update(
+            selected: groupStart.selected, anchor: groupStart.anchor,
+            clicked: secondGroup, visible: visible, modifiers: [.shift]
+        )
+        XCTAssertEqual(groupRange.selected, [firstGroup, secondGroup])
+    }
+
+    @MainActor
+    func testMovingFolderPreservesSubfoldersAndConnections() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Lab/Servers/Linux"))
+        XCTAssertTrue(state.addGroup("Lab/Servers/Empty"))
+        XCTAssertTrue(state.addGroup("Production"))
+        let first = RemoteConnection(name: "One", kind: .ssh, host: "192.0.2.61", group: "Lab/Servers")
+        let second = RemoteConnection(name: "Two", kind: .rdp, host: "192.0.2.62", group: "Lab/Servers/Linux", isFavorite: true)
+        let third = RemoteConnection(name: "Three", kind: .ssh, host: "192.0.2.63", group: "Lab")
+        try state.add(first, password: nil)
+        try state.add(second, password: nil)
+        try state.add(third, password: nil)
+
+        try state.moveSidebarItems(
+            withConnectionIDs: [third.id],
+            groupPaths: ["Lab/Servers", "Lab/Servers/Linux"],
+            toGroup: "Production"
+        )
+
+        XCTAssertTrue(state.groups.contains("Production/Servers"))
+        XCTAssertTrue(state.groups.contains("Production/Servers/Linux"))
+        XCTAssertTrue(state.groups.contains("Production/Servers/Empty"))
+        XCTAssertFalse(state.groups.contains("Lab/Servers"))
+        XCTAssertEqual(state.connections.first(where: { $0.id == first.id })?.group, "Production/Servers")
+        XCTAssertEqual(state.connections.first(where: { $0.id == second.id })?.group, "Production/Servers/Linux")
+        XCTAssertTrue(state.connections.first(where: { $0.id == second.id })?.isFavorite == true)
+        XCTAssertEqual(state.connections.first(where: { $0.id == third.id })?.group, "Production")
+        let reloaded = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(reloaded.groups.contains("Production/Servers/Empty"))
+        XCTAssertEqual(reloaded.connections.first(where: { $0.id == first.id })?.group,
+                       "Production/Servers")
+    }
+
+    @MainActor
+    func testFolderCannotMoveIntoItselfOrOverExistingFolder() {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Lab/Servers/Linux"))
+        XCTAssertTrue(state.addGroup("Production/Servers"))
+        let previousGroups = state.groups
+
+        XCTAssertThrowsError(try state.moveSidebarItems(
+            withConnectionIDs: [], groupPaths: ["Lab/Servers"], toGroup: "Lab/Servers/Linux"
+        ))
+        XCTAssertThrowsError(try state.moveSidebarItems(
+            withConnectionIDs: [], groupPaths: ["Lab/Servers"], toGroup: "Production"
+        ))
+        XCTAssertEqual(state.groups, previousGroups)
+    }
+
+    @MainActor
+    func testMultipleFoldersMoveTogether() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Lab/Switches"))
+        XCTAssertTrue(state.addGroup("Lab/Servers/Empty"))
+        XCTAssertTrue(state.addGroup("Production"))
+
+        try state.moveSidebarItems(
+            withConnectionIDs: [],
+            groupPaths: ["Lab/Switches", "Lab/Servers"],
+            toGroup: "Production"
+        )
+
+        XCTAssertTrue(state.groups.contains("Production/Switches"))
+        XCTAssertTrue(state.groups.contains("Production/Servers/Empty"))
+        XCTAssertFalse(state.groups.contains("Lab/Switches"))
+        XCTAssertFalse(state.groups.contains("Lab/Servers"))
+    }
+
+    @MainActor
+    func testFailedFolderMoveRestoresGroupHierarchy() {
+        let store = FailOnSaveConnectionStore(connections: [.localShell])
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Lab/Servers/Empty"))
+        XCTAssertTrue(state.addGroup("Production"))
+        let originalGroups = state.groups
+        store.shouldFail = true
+
+        XCTAssertThrowsError(try state.moveSidebarItems(
+            withConnectionIDs: [], groupPaths: ["Lab/Servers"], toGroup: "Production"
+        ))
+
+        XCTAssertEqual(state.groups, originalGroups)
+        XCTAssertEqual(groupStore.load(), originalGroups)
+    }
+
+    @MainActor
+    func testRenamingGroupPreservesNestedClientsAndCredentials() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let vault = TestCredentialVault()
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: vault)
+        XCTAssertTrue(state.addGroup("Lab/Servers/Empty"))
+        let connection = RemoteConnection(
+            name: "Test Server", kind: .ssh, host: "192.0.2.71", group: "Lab/Servers"
+        )
+        try state.add(connection, password: "unit-test-placeholder")
+
+        let path = try state.renameGroup("Lab/Servers", to: "Hosts")
+
+        XCTAssertEqual(path, "Lab/Hosts")
+        XCTAssertTrue(state.groups.contains("Lab/Hosts/Empty"))
+        XCTAssertFalse(state.groups.contains("Lab/Servers"))
+        XCTAssertEqual(state.connections.first(where: { $0.id == connection.id })?.group, "Lab/Hosts")
+        XCTAssertEqual(try vault.password(for: connection.id), "unit-test-placeholder")
+        let reloaded = AppState(store: store, groupStore: groupStore, credentialVault: vault)
+        XCTAssertEqual(reloaded.connections.first(where: { $0.id == connection.id })?.group,
+                       "Lab/Hosts")
+        XCTAssertTrue(reloaded.groups.contains("Lab/Hosts/Empty"))
+    }
+
+    @MainActor
+    func testGroupRenameRejectsConflictAndBuiltInGroup() {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Lab/Servers"))
+        XCTAssertTrue(state.addGroup("Lab/Hosts"))
+        XCTAssertTrue(state.addGroup("Ungrouped"))
+        let originalGroups = state.groups
+
+        XCTAssertThrowsError(try state.renameGroup("Lab/Servers", to: "Hosts"))
+        XCTAssertThrowsError(try state.renameGroup("Lab/Servers", to: "Bad/Name"))
+        XCTAssertThrowsError(try state.renameGroup("Ungrouped", to: "Other"))
+        XCTAssertEqual(state.groups, originalGroups)
+    }
+
+    @MainActor
+    func testFailedGroupRenameRestoresNamesAndClients() {
+        let connection = RemoteConnection(
+            name: "Test Server", kind: .ssh, host: "192.0.2.72", group: "Lab/Servers"
+        )
+        let store = FailOnSaveConnectionStore(connections: [.localShell, connection])
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        let originalGroups = state.groups
+        store.shouldFail = true
+
+        XCTAssertThrowsError(try state.renameGroup("Lab/Servers", to: "Hosts"))
+
+        XCTAssertEqual(state.groups, originalGroups)
+        XCTAssertEqual(groupStore.load(), originalGroups)
+        XCTAssertEqual(state.connections.first(where: { $0.id == connection.id })?.group,
+                       "Lab/Servers")
     }
 
     @MainActor

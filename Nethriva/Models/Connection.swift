@@ -4,6 +4,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
     case localShell
     case ssh
     case telnet
+    case serial
     case rdp
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .localShell: "Local"
         case .ssh: "SSH"
         case .telnet: "Telnet"
+        case .serial: "Serial"
         case .rdp: "RDP"
         }
     }
@@ -22,6 +24,7 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .localShell: "terminal"
         case .ssh: "chevron.left.forwardslash.chevron.right"
         case .telnet: "network"
+        case .serial: "cable.connector"
         case .rdp: "display"
         }
     }
@@ -31,9 +34,22 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .localShell: 0
         case .ssh: 22
         case .telnet: 23
+        case .serial: 0
         case .rdp: 3389
         }
     }
+}
+
+enum SerialParity: String, Codable, CaseIterable, Identifiable {
+    case none, even, odd
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+}
+
+enum SerialFlowControl: String, Codable, CaseIterable, Identifiable {
+    case none, hardware, software
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
 }
 
 enum SSHAuthenticationMode: String, Codable, CaseIterable, Identifiable {
@@ -129,6 +145,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
     var host: String
     var port: Int
     var username: String
+    var credentialProfileID: UUID?
     var group: String
     var isFavorite: Bool
     var createdAt: Date
@@ -138,6 +155,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
     var sshForwardAgent: Bool?
     var sshCompression: Bool?
     var sshKeepAliveInterval: Int?
+    var serialBaudRate: Int?
+    var serialDataBits: Int?
+    var serialParity: SerialParity?
+    var serialStopBits: Int?
+    var serialFlowControl: SerialFlowControl?
+    var serialLocalEcho: Bool?
     var rdpDomain: String?
     var rdpGatewayHost: String?
     var rdpGatewayUsername: String?
@@ -167,6 +190,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         host: String = "",
         port: Int? = nil,
         username: String = "",
+        credentialProfileID: UUID? = nil,
         group: String = "Ungrouped",
         isFavorite: Bool = false,
         createdAt: Date = Date(),
@@ -176,6 +200,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         sshForwardAgent: Bool? = nil,
         sshCompression: Bool? = nil,
         sshKeepAliveInterval: Int? = nil,
+        serialBaudRate: Int? = nil,
+        serialDataBits: Int? = nil,
+        serialParity: SerialParity? = nil,
+        serialStopBits: Int? = nil,
+        serialFlowControl: SerialFlowControl? = nil,
+        serialLocalEcho: Bool? = nil,
         rdpDomain: String? = nil,
         rdpGatewayHost: String? = nil,
         rdpGatewayUsername: String? = nil,
@@ -204,6 +234,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         self.host = host
         self.port = port ?? kind.defaultPort
         self.username = username
+        self.credentialProfileID = credentialProfileID
         self.group = group.isEmpty ? "Ungrouped" : group
         self.isFavorite = isFavorite
         self.createdAt = createdAt
@@ -213,6 +244,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         self.sshForwardAgent = sshForwardAgent
         self.sshCompression = sshCompression
         self.sshKeepAliveInterval = sshKeepAliveInterval
+        self.serialBaudRate = serialBaudRate
+        self.serialDataBits = serialDataBits
+        self.serialParity = serialParity
+        self.serialStopBits = serialStopBits
+        self.serialFlowControl = serialFlowControl
+        self.serialLocalEcho = serialLocalEcho
         self.rdpDomain = rdpDomain
         self.rdpGatewayHost = rdpGatewayHost
         self.rdpGatewayUsername = rdpGatewayUsername
@@ -244,6 +281,13 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         min(max(sshKeepAliveInterval ?? 30, 0), 3600)
     }
 
+    var effectiveSerialBaudRate: Int { serialBaudRate ?? 115_200 }
+    var effectiveSerialDataBits: Int { serialDataBits ?? 8 }
+    var effectiveSerialParity: SerialParity { serialParity ?? .none }
+    var effectiveSerialStopBits: Int { serialStopBits ?? 1 }
+    var effectiveSerialFlowControl: SerialFlowControl { serialFlowControl ?? .none }
+    var effectiveSerialLocalEcho: Bool { serialLocalEcho ?? false }
+
     var effectiveRDPDisplayMode: RDPDisplayMode { rdpDisplayMode ?? .dynamicWindow }
     var effectiveRDPWidth: Int { min(max(rdpWidth ?? 1600, 640), 7680) }
     var effectiveRDPHeight: Int { min(max(rdpHeight ?? 1000, 480), 4320) }
@@ -258,6 +302,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
 
     var endpointDescription: String {
         guard kind != .localShell else { return "This Mac" }
+        if kind == .serial { return host }
         let userPrefix = username.isEmpty ? "" : "\(username)@"
         return "\(userPrefix)\(host):\(port)"
     }
