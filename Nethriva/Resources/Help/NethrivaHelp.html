@@ -258,7 +258,7 @@
       <header class="hero" id="welcome">
         <h1>Nethriva Help</h1>
         <p>A complete offline guide to organizing connections, using local, SSH, Telnet, and Serial terminals, transferring files, and working with embedded Windows desktops.</p>
-        <span class="version">Nethriva 0.12.0 · Help edition</span>
+        <span class="version">Nethriva 0.12.1 · Help edition</span>
       </header>
 
       <section id="quick-start">
@@ -298,12 +298,12 @@
           <li>A folder cannot be moved into itself or onto a destination with the same folder name. Folders cannot be dropped onto Favorites.</li>
           <li>Groups and connections remain alphabetically sorted; dragging changes group membership, not the manual order within a group.</li>
           <li>The <strong>Add</strong> menu creates a connection or a persistent empty group.</li>
-          <li>Right-click a group or use its ellipsis menu to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or delete it when empty. Renaming updates nested groups and client assignments but not saved credentials.</li>
+          <li>Right-click a group or use its ellipsis menu to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or remove it. Removing a group also removes its subgroups and moves their connections to Ungrouped; Favorite markers are cleared so all connections appear there, while saved credentials stay unchanged. Renaming updates nested groups and client assignments but not saved credentials.</li>
           <li>Groups can contain both connections and more subgroups; click the disclosure arrow to expand or collapse them.</li>
           <li>Type in the sidebar search field, or press <strong>Command-F</strong>, to find connections by name, hostname or IP address, group path, or port. Multiple words narrow the results.</li>
           <li>The ellipsis menu applies actions to the selected connection.</li>
           <li>Right-click a connection to open, quickly rename, edit, duplicate, move, favorite, copy its address, copy an SSH command, open SFTP, or delete it.</li>
-          <li>An empty group can be deleted from its group-header menu. A group containing connections or subgroups must be emptied first.</li>
+          <li>Removing a group asks for confirmation. Connections inside the group or any nested subgroup are moved to Ungrouped rather than deleted.</li>
         </ul>
         <h3>Common connection fields</h3>
         <table>
@@ -588,7 +588,7 @@
         <p>This manual is bundled with Nethriva and works without an internet connection. Open it from the toolbar's question-mark button, choose <strong>Help → Nethriva Help</strong>, or press <kbd>⌘?</kbd>.</p>
         <p>Use the search field to highlight matching terms. Repeated searches start from the beginning of the manual and show every match.</p>
         <p>Nethriva is free and open-source software. If it saves you time, you can optionally leave a <a href="https://ko-fi.com/vsharapov">one-time tip through Ko-fi</a>. The Help menu provides the same link.</p>
-        <p class="muted">Manual version 0.12.0 · Covers local terminal, SSH, Telnet, Serial, remote file tree, SFTP, embedded RDP, connection import/export, credential profiles, security, and troubleshooting.</p>
+        <p class="muted">Manual version 0.12.1 · Covers local terminal, SSH, Telnet, Serial, remote file tree, SFTP, embedded RDP, connection import/export, credential profiles, security, and troubleshooting.</p>
       </section>
 
       <footer>Nethriva Help · Offline documentation bundled with the application</footer>

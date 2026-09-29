@@ -8,7 +8,7 @@ Nethriva is a free, open-source, native macOS connection manager for local termi
 
 - Public repository: <https://github.com/vitalii-sharapov/Nethriva>
 - License: Apache License 2.0
-- Current project version: 0.12.0 (build 25; release not yet published)
+- Current project version: 0.12.1 (build 26)
 - Minimum macOS version: macOS 14
 - Current bundled RDP architecture: Apple silicon
 - GitHub Sponsors: <https://github.com/sponsors/vitalii-sharapov>
@@ -23,8 +23,10 @@ Nethriva is the only public product identity and must be used consistently in al
 ### Workspace and connections
 
 - Native resizable macOS window with a hideable connection sidebar
+- Compact title bar, session tabs, and RDP controls to preserve desktop space
 - Persistent nested groups, favorites, and saved SSH/Telnet/Serial/RDP connections
 - Search by name, host/IP, group path, or port; create, edit, quick-rename, duplicate, multi-select, drag-and-drop move, favorite, and delete actions
+- Confirmed removal of a group or subgroup moves all nested connections to Ungrouped while retaining saved credentials
 - Import/export with group and credential-profile links preserved, optional encrypted individual and shared Keychain credentials, preview, and duplicate policies
 - Separate Debug and Release preferences and Keychain services so development data cannot enter packaged builds
 - Independent tabbed local terminal, SSH, Telnet, Serial, SFTP, and RDP sessions

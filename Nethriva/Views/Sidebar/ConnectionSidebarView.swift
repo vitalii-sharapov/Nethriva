@@ -18,6 +18,7 @@ struct ConnectionSidebarView: View {
     @State private var renamedConnectionName = ""
     @State private var renameGroupPath: String?
     @State private var renamedGroupName = ""
+    @State private var groupPendingRemoval: String?
     @State private var actionError: String?
     @State private var selectedItems: Set<SidebarSelectionItem> = []
     @State private var selectionAnchor: SidebarSelectionItem?
@@ -192,6 +193,15 @@ struct ConnectionSidebarView: View {
                 .disabled(!isValidRenamedGroupName)
         } message: {
             Text("Connections and subgroups will move with this group. Saved credentials are unchanged.")
+        }
+        .alert("Remove Group?", isPresented: Binding(
+            get: { groupPendingRemoval != nil },
+            set: { if !$0 { groupPendingRemoval = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { groupPendingRemoval = nil }
+            Button("Remove Group", role: .destructive) { commitGroupRemoval() }
+        } message: {
+            Text("Remove “\(groupPendingRemoval ?? "this group")” and its subgroups? Their connections will move to Ungrouped, and Favorite markers will be removed so every connection appears there. Saved credentials will stay unchanged.")
         }
         .alert("Could Not Complete Action", isPresented: Binding(
             get: { actionError != nil },
@@ -382,15 +392,6 @@ struct ConnectionSidebarView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private func hasConnections(in groupName: String) -> Bool {
-        appState.connections.contains {
-            $0.kind != .localShell && (
-                $0.group.caseInsensitiveCompare(groupName) == .orderedSame
-                || $0.group.lowercased().hasPrefix(groupName.lowercased() + "/")
-            )
-        }
-    }
-
     @ViewBuilder
     private func groupHeader(_ groupName: String) -> some View {
         let content = HStack {
@@ -457,11 +458,9 @@ struct ConnectionSidebarView: View {
             Button("Copy Group Path") {
                 copyToClipboard(groupName)
             }
-            if !hasConnections(in: groupName) && childGroups(of: groupName).isEmpty {
-                Divider()
-                Button("Delete Empty Group", role: .destructive) {
-                    appState.deleteGroup(groupName)
-                }
+            Divider()
+            Button("Remove Group…", role: .destructive) {
+                groupPendingRemoval = groupName
             }
         }
     }
@@ -750,6 +749,33 @@ struct ConnectionSidebarView: View {
             actionError = error.localizedDescription
         }
         renameGroupPath = nil
+    }
+
+    private func commitGroupRemoval() {
+        guard let path = groupPendingRemoval else { return }
+        defer { groupPendingRemoval = nil }
+        do {
+            try appState.removeGroup(path)
+            selectedItems = selectedItems.filter { item in
+                guard case .group(let selectedPath) = item else { return true }
+                return !groupPath(selectedPath, isWithin: path)
+            }
+            if case .group(let anchorPath) = selectionAnchor,
+               groupPath(anchorPath, isWithin: path) {
+                selectionAnchor = nil
+            }
+            collapsedGroups = Set(collapsedGroups.filter { !groupPath($0, isWithin: path) })
+            if let dropTargetGroup, groupPath(dropTargetGroup, isWithin: path) {
+                self.dropTargetGroup = nil
+            }
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func groupPath(_ candidate: String, isWithin parent: String) -> Bool {
+        candidate.caseInsensitiveCompare(parent) == .orderedSame
+            || candidate.lowercased().hasPrefix(parent.lowercased() + "/")
     }
 
     private func rebasedGroupPath(_ path: String, from old: String, to new: String) -> String {

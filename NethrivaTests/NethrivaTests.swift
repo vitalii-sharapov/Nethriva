@@ -1042,6 +1042,76 @@ final class NethrivaTests: XCTestCase {
     }
 
     @MainActor
+    func testRemovingSubgroupMovesNestedConnectionsToUngrouped() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let vault = TestCredentialVault()
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: vault)
+        XCTAssertTrue(state.addGroup("Lab/Servers/Linux"))
+        XCTAssertTrue(state.addGroup("Lab/Servers/Empty"))
+        XCTAssertTrue(state.addGroup("Lab/Other"))
+
+        let direct = RemoteConnection(name: "Direct", kind: .ssh, host: "192.0.2.80", group: "Lab/Servers")
+        let nested = RemoteConnection(name: "Nested", kind: .rdp, host: "192.0.2.81", group: "Lab/Servers/Linux", isFavorite: true)
+        let sibling = RemoteConnection(name: "Sibling", kind: .ssh, host: "192.0.2.82", group: "Lab/Other")
+        try state.add(direct, password: "unit-test-placeholder")
+        try state.add(nested, password: nil)
+        try state.add(sibling, password: nil)
+
+        XCTAssertEqual(try state.removeGroup("Lab/Servers"), 2)
+
+        XCTAssertTrue(state.groups.contains("Lab"))
+        XCTAssertTrue(state.groups.contains("Lab/Other"))
+        XCTAssertTrue(state.groups.contains("Ungrouped"))
+        XCTAssertFalse(state.groups.contains { $0.hasPrefix("Lab/Servers") })
+        XCTAssertEqual(state.connections.first(where: { $0.id == direct.id })?.group, "Ungrouped")
+        XCTAssertEqual(state.connections.first(where: { $0.id == nested.id })?.group, "Ungrouped")
+        XCTAssertTrue(state.connections.first(where: { $0.id == nested.id })?.isFavorite == false)
+        XCTAssertEqual(state.connections.first(where: { $0.id == sibling.id })?.group, "Lab/Other")
+        XCTAssertEqual(try vault.password(for: direct.id), "unit-test-placeholder")
+
+        let reloaded = AppState(store: store, groupStore: groupStore, credentialVault: vault)
+        XCTAssertEqual(reloaded.connections.first(where: { $0.id == direct.id })?.group, "Ungrouped")
+        XCTAssertEqual(reloaded.connections.first(where: { $0.id == nested.id })?.group, "Ungrouped")
+        XCTAssertFalse(reloaded.groups.contains { $0.hasPrefix("Lab/Servers") })
+    }
+
+    @MainActor
+    func testRemovingGroupRejectsUngroupedAndMissingGroup() {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections")
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        XCTAssertTrue(state.addGroup("Ungrouped"))
+        XCTAssertTrue(state.addGroup("Lab"))
+        let previousGroups = state.groups
+
+        XCTAssertThrowsError(try state.removeGroup("Ungrouped"))
+        XCTAssertThrowsError(try state.removeGroup("Missing"))
+        XCTAssertEqual(state.groups, previousGroups)
+    }
+
+    @MainActor
+    func testFailedGroupRemovalRestoresConnectionsAndGroups() {
+        let connection = RemoteConnection(name: "Server", kind: .ssh, host: "192.0.2.83", group: "Lab/Servers")
+        let store = FailOnSaveConnectionStore(connections: [.localShell, connection])
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let groupStore = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let state = AppState(store: store, groupStore: groupStore, credentialVault: TestCredentialVault())
+        let previousGroups = state.groups
+        store.shouldFail = true
+
+        XCTAssertThrowsError(try state.removeGroup("Lab"))
+        XCTAssertEqual(state.groups, previousGroups)
+        XCTAssertEqual(groupStore.load(), previousGroups)
+        XCTAssertEqual(state.connections.first(where: { $0.id == connection.id })?.group, "Lab/Servers")
+    }
+
+    @MainActor
     func testQuickRenameUpdatesSavedConnectionAndOpenTab() throws {
         let defaults = UserDefaults(suiteName: #function)!
         defaults.removePersistentDomain(forName: #function)

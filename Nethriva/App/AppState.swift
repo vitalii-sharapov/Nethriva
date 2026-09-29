@@ -97,7 +97,7 @@ enum ConnectionGroupError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable: "The group is no longer available."
-        case .protectedGroup: "Ungrouped is a built-in destination and cannot be renamed."
+        case .protectedGroup: "Ungrouped is a built-in destination and cannot be renamed or removed."
         case .invalidName: "Enter a group name without slashes or control characters."
         case .nameConflict: "A group with that name already exists here."
         }
@@ -281,6 +281,39 @@ final class AppState: ObservableObject {
         }) else { return }
         groups.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
         groupStore.save(groups)
+    }
+
+    @discardableResult
+    func removeGroup(_ path: String) throws -> Int {
+        guard let existing = groups.first(where: {
+            $0.caseInsensitiveCompare(path) == .orderedSame
+        }) else { throw ConnectionGroupError.unavailable }
+        guard existing.caseInsensitiveCompare("Ungrouped") != .orderedSame else {
+            throw ConnectionGroupError.protectedGroup
+        }
+
+        let previousConnections = connections
+        let previousGroups = groups
+        var movedCount = 0
+        for index in connections.indices where connections[index].kind != .localShell {
+            guard Self.isGroup(connections[index].group, within: existing) else { continue }
+            connections[index].group = "Ungrouped"
+            connections[index].isFavorite = false
+            movedCount += 1
+        }
+        groups = Self.normalizedGroups(
+            groups.filter { !Self.isGroup($0, within: existing) } + ["Ungrouped"]
+        )
+        do {
+            if movedCount > 0 { try persist() }
+            groupStore.save(groups)
+        } catch {
+            connections = previousConnections
+            groups = previousGroups
+            groupStore.save(previousGroups)
+            throw error
+        }
+        return movedCount
     }
 
     @discardableResult

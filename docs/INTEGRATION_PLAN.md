@@ -12,7 +12,7 @@ An app-wide Settings scene persists display preferences in the active Debug or R
 
 Version 0.10.0 adds a complete offline HTML help manual bundled in the application resources. A native SwiftUI help window hosts it through WebKit, with light/dark appearance support, section navigation, full-text highlighting, print styling, a Help-menu command, Command-?, and a main-window toolbar entry.
 
-Version 0.11.0 consolidated Telnet, connection import/export, isolated Debug data, privacy settings, credential and SFTP hardening, and the in-app RDP authentication dialog improvements. Version 0.12.0 adds native Serial sessions, reusable Keychain-backed credential profiles, profile-aware encrypted import/export, Telnet username assistance, and richer sidebar organization. The 0.12.0 source version has not yet been published as a GitHub release.
+Version 0.11.0 consolidated Telnet, connection import/export, isolated Debug data, privacy settings, credential and SFTP hardening, and the in-app RDP authentication dialog improvements. Version 0.12.0 adds native Serial sessions, reusable Keychain-backed credential profiles, profile-aware encrypted import/export, Telnet username assistance, and richer sidebar organization. Version 0.12.1 compacts the title, tab, and RDP control bars, and adds confirmed removal of nested groups that relocates their connections to Ungrouped without deleting saved credentials. Source version changes do not by themselves publish a binary GitHub release.
 
 ## SSH, Telnet, and SwiftTerm
 

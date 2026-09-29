@@ -14,6 +14,7 @@ struct NethrivaApp: App {
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.titleBar)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             NethrivaHelpCommands()
 

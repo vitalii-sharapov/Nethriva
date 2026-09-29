@@ -7,7 +7,7 @@ struct SessionTabBar: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(appState.tabs) { tab in
-                    HStack(spacing: 7) {
+                    HStack(spacing: 6) {
                         Image(systemName: tab.systemImage)
                             .font(.caption)
 
@@ -19,12 +19,13 @@ struct SessionTabBar: View {
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.caption2.weight(.semibold))
+                                .frame(width: 20, height: 24)
                         }
                         .buttonStyle(.plain)
                         .help("Close session")
                     }
-                    .padding(.horizontal, 11)
-                    .frame(height: 36)
+                    .padding(.horizontal, 9)
+                    .frame(height: 30)
                     .background(
                         appState.selectedTabID == tab.id
                             ? Color.accentColor.opacity(0.16)
@@ -36,7 +37,7 @@ struct SessionTabBar: View {
                     }
 
                     Divider()
-                        .frame(height: 20)
+                        .frame(height: 16)
                 }
             }
         }

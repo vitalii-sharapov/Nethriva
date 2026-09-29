@@ -4,7 +4,7 @@
 
 Nethriva is an open-source native macOS connection manager for local terminal, SSH, Telnet, Serial, SFTP, and RDP sessions. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
 
-The current project version is Nethriva 0.12.0 (build 25). This source update does not publish a new GitHub release.
+The current project version is Nethriva 0.12.1 (build 26). A GitHub binary release is published separately from source updates.
 
 ## At a glance
 
@@ -41,6 +41,7 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Resizable split-view layout with a hideable, width-adjustable connection sidebar
 - Minimum application size of 900 × 600 for a usable session workspace
 - Horizontal session tab bar with protocol-specific icons and close controls
+- Compact title bar, session tabs, and RDP controls to leave more room for the remote desktop
 - Independent local terminal, SSH, Telnet, Serial, SFTP, and RDP tabs
 - Resizable remote-file tree displayed beside every SSH terminal
 - Multiple tabs for the same saved connection
@@ -65,8 +66,8 @@ The Xcode project pins its Swift package dependencies. RDP is self-contained in 
 - Sidebar search by connection name, hostname/IP address, group path, or port; multiple terms can be combined
 - Favorites section for frequently used connections
 - Create, edit, quickly rename, duplicate, move, favorite, and delete connections
-- Create persistent empty groups and subgroups, and remove unused empty groups
-- Right-click a group to add a connection or subgroup, rename it, expand or collapse it, copy its path, or delete it when empty
+- Create persistent groups and subgroups; remove a group while moving its connections to Ungrouped
+- Right-click a group to add a connection or subgroup, rename it, expand or collapse it, copy its path, or remove it
 - Add a connection directly to a selected group
 - Command-click to toggle individual connections or folders, or Shift-click to select a visible range of the same kind
 - Drag selected connections to another group; drag a folder to move its entire subtree, including empty subfolders
@@ -408,7 +409,7 @@ Open **Nethriva → Settings…** or press Command-, to choose whether the sideb
 
 #### Organize connections
 
-Create groups from the sidebar Add menu. Right-click a group (or use its ellipsis menu) to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or delete it when empty. Renaming a group updates its clients and nested subgroups without changing saved credentials. Nested groups expand and collapse in the sidebar, and the saved hierarchy is included in library exports. Command-click to toggle individual clients or folders; Shift-click the first and last clients to select all visible clients between them, or do the same with folders. Drag any selected row onto a group header or a client in that group to move the selection together. Dragging a folder moves its clients and subfolders too, including empty subfolders. You can also drop clients onto Favorites or Ungrouped; dropping a folder onto Ungrouped moves it to the top level. A folder cannot be moved inside itself or overwrite another folder. Moving a client into a group removes the Favorite marker so it appears in its destination; groups remain alphabetically sorted rather than manually ordered. Type in the sidebar search field or press Command-F to find connections by name, hostname/IP, group path, or port; separate words narrow the results. The selected-connection menu and row context menu offer quick Rename alongside opening, editing, duplication, moving, address copying, SSH-command copying, and deletion actions.
+Create groups from the sidebar Add menu. Right-click a group (or use its ellipsis menu) to add a connection or subgroup, rename the group, expand or collapse it, copy its path, or remove it. Removing a group also removes its subgroups and moves all their connections to Ungrouped; Favorite markers are cleared so every connection appears there, while saved credentials remain unchanged. Renaming a group updates its clients and nested subgroups without changing saved credentials. Nested groups expand and collapse in the sidebar, and the saved hierarchy is included in library exports. Command-click to toggle individual clients or folders; Shift-click the first and last clients to select all visible clients between them, or do the same with folders. Drag any selected row onto a group header or a client in that group to move the selection together. Dragging a folder moves its clients and subfolders too, including empty subfolders. You can also drop clients onto Favorites or Ungrouped; dropping a folder onto Ungrouped moves it to the top level. A folder cannot be moved inside itself or overwrite another folder. Moving a client into a group removes the Favorite marker so it appears in its destination; groups remain alphabetically sorted rather than manually ordered. Type in the sidebar search field or press Command-F to find connections by name, hostname/IP, group path, or port; separate words narrow the results. The selected-connection menu and row context menu offer quick Rename alongside opening, editing, duplication, moving, address copying, SSH-command copying, and deletion actions.
 
 #### Back up or move a connection library
 
@@ -538,7 +539,13 @@ Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party compon
 
 ## Release notes
 
-### 0.12.0 (source version; release not yet published)
+### 0.12.1
+
+- Reduced the height of the macOS title bar, session tabs, and RDP controls for a larger usable desktop area.
+- Added **Remove Group…** for groups and subgroups. Removal asks for confirmation, removes nested groups, and moves their connections to Ungrouped without deleting saved credentials. Favorite markers are cleared so moved connections remain visible.
+- Added tests for nested-group removal, protected groups, and recovery when saving fails.
+
+### 0.12.0
 
 - Added native Serial sessions with available-port discovery, configurable line settings, local echo, paste, and reconnect.
 - Added reusable credential profiles for SSH, Telnet, and RDP. Profiles share a Keychain password across linked connections and support password rotation without editing every client.

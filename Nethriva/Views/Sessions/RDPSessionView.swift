@@ -15,9 +15,9 @@ struct RDPSessionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Label("RDP", systemImage: "display")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
 
                 if let endpoint = settings.sessionEndpoint(for: connection) {
                     Text(endpoint)
@@ -82,8 +82,9 @@ struct RDPSessionView: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
+            .controlSize(.small)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
             .background(.bar)
 
             Divider()
