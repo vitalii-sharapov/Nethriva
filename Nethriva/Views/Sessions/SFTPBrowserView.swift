@@ -4,6 +4,9 @@ import SwiftUI
 struct SFTPBrowserView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recovery: SessionRecovery
+    @EnvironmentObject private var editors: RemoteFileEditors
+    @Environment(\.sessionLifetime) private var lifetime
     @StateObject private var model: SFTPBrowserModel
 
     let connection: RemoteConnection
@@ -36,15 +39,28 @@ struct SFTPBrowserView: View {
             }
 
             Divider()
+            SFTPTransferQueueView(queue: model.transfers)
             statusBar
         }
         .task {
+            lifetime?.own("sftp") { [model = model] in model.close() }
+            if lifetime?.claimStart("sftp") == false { return }
             do {
-                model.password = try appState.password(for: connection)
+                model.password = try await appState.sessionPassword(for: connection)
+                try Task.checkCancellation(); _ = try appState.credentialGate.check()
+                model.transfers.configure(password: model.password)
+                model.connectQueue()
                 await model.load(path: ".")
             } catch {
                 model.errorMessage = error.localizedDescription
             }
+        }
+        .onDisappear { if lifetime == nil { model.close() } }
+        .onChange(of: recovery.suspended) { _, suspended in
+            if suspended { model.suspend() } else { model.transfers.resume() }
+        }
+        .onChange(of: recovery.epoch) { _, _ in
+            if settings.recoverNetworkSessions { Task { await model.refresh() } }
         }
         .alert(namePrompt?.title ?? "SFTP Action", isPresented: Binding(
             get: { namePrompt != nil },
@@ -121,6 +137,8 @@ struct SFTPBrowserView: View {
             }
 
             Spacer()
+
+                ConnectionCheckButton(connection: connection).labelStyle(.iconOnly)
 
             Button(action: goUp) {
                 Image(systemName: "arrow.up")
@@ -209,6 +227,9 @@ struct SFTPBrowserView: View {
                     }
                 )
                 .contextMenu {
+                    if !item.isDirectory, !item.isSymbolicLink {
+                        Button("Edit Remote File…") { editors.open(item: item, connection: connection, appState: appState) }
+                    }
                     if item.isDirectory {
                         Button("Open") { activate(item) }
                     }
@@ -378,15 +399,19 @@ final class SFTPBrowserModel: ObservableObject {
 
     private let connection: RemoteConnection
     private let service = SFTPService()
+    let transfers: SFTPTransferQueue
 
     init(connection: RemoteConnection) {
         self.connection = connection
+        transfers = SFTPTransferQueue(connection: connection)
     }
 
     var selectedItem: SFTPFileItem? {
         guard let selectedID else { return nil }
         return items.first { $0.id == selectedID }
     }
+
+    func connectQueue() { transfers.onUploadFinished = { [weak self] in await self?.refresh() } }
 
     func load(path: String) async {
         await perform("Loading \(path)…") {
@@ -407,27 +432,15 @@ final class SFTPBrowserModel: ObservableObject {
 
     func upload(urls: [URL]) async {
         guard !urls.isEmpty else { return }
-        await perform("Uploading \(urls.count) item\(urls.count == 1 ? "" : "s")…") {
-            try await service.upload(
-                localURLs: urls,
-                to: currentPath,
-                connection: connection,
-                password: password
-            )
-            try await reloadCurrentDirectory()
-        }
+        transfers.upload(urls, to: currentPath)
     }
 
     func download(item: SFTPFileItem, to url: URL) async {
-        await perform("Downloading \(item.name)…") {
-            try await service.download(
-                item: item,
-                to: url,
-                connection: connection,
-                password: password
-            )
-        }
+        transfers.download(item, to: url)
     }
+
+    func suspend() { service.close(); transfers.suspend() }
+    func close() { service.close(); transfers.close(); password = nil }
 
     func createDirectory(named name: String) async {
         await perform("Creating folder…") {
@@ -481,7 +494,7 @@ final class SFTPBrowserModel: ObservableObject {
         do {
             try await operation()
         } catch {
-            errorMessage = error.localizedDescription
+            if !(error is CancellationError) { errorMessage = (error as? SFTPServiceError)?.localizedDescription ?? "The file operation could not finish. Refresh and retry." }
         }
     }
 }

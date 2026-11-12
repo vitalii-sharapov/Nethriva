@@ -30,8 +30,8 @@ enum KeychainError: LocalizedError {
 
 final class KeychainService: CredentialVault {
     static let shared = KeychainService(
-        service: NethrivaDataProfile.credentialService,
-        legacyServices: NethrivaDataProfile.legacyCredentialServices
+        service: NethrivaDataProfile.effectiveCredentialService,
+        legacyServices: NethrivaDataProfile.effectiveLegacyCredentialServices
     )
 
     private let service: String
@@ -43,6 +43,7 @@ final class KeychainService: CredentialVault {
     }
 
     func save(password: String, for connectionID: UUID) throws {
+        _ = try CredentialAccessGate.shared.check()
         let account = connectionID.uuidString
         let data = Data(password.utf8)
         let baseQuery = query(account: account, service: service)
@@ -70,8 +71,9 @@ final class KeychainService: CredentialVault {
     }
 
     func password(for connectionID: UUID) throws -> String? {
+        let epoch = try CredentialAccessGate.shared.check()
         let account = connectionID.uuidString
-        return try Self.resolvePassword(
+        let value = try Self.resolvePassword(
             account: account,
             currentService: service,
             legacyServices: legacyServices,
@@ -82,6 +84,8 @@ final class KeychainService: CredentialVault {
                 try self.save(password: password, for: connectionID)
             }
         )
+        try CredentialAccessGate.shared.check(epoch)
+        return value
     }
 
     static func resolvePassword(
@@ -108,6 +112,7 @@ final class KeychainService: CredentialVault {
     }
 
     func containsPassword(for connectionID: UUID) throws -> Bool {
+        _ = try CredentialAccessGate.shared.check()
         let account = connectionID.uuidString
         for service in [service] + legacyServices {
             var lookup = query(account: account, service: service)
@@ -126,6 +131,7 @@ final class KeychainService: CredentialVault {
     }
 
     func deletePassword(for connectionID: UUID) throws {
+        _ = try CredentialAccessGate.shared.check()
         let account = connectionID.uuidString
         let services = [service] + legacyServices
 

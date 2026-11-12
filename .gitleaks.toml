@@ -1,0 +1,27 @@
+title = "Nethriva secret scanning"
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated build outputs, vendored licenses/binaries and Git internals; source/tests remain scanned"
+paths = [
+  '''(^|/)(\.git|\.derivedData[^/]*|DerivedData|\.build|release-artifacts|build)(/|$)''',
+  '''\.(dylib|xcresult|xcassets|png|icns|pdf|zip|dmg)$''',
+  '''(^|/)work/''', # Ignored legacy dependency/tool build cache, not application source or shipped assets.
+]
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Public SHA-256 bridge source checksums; exact provenance file and digest only"
+condition = "AND"
+paths = ['''(^|/)Nethriva/Resources/FreeRDP/PROVENANCE\.json$''']
+regexTarget = "secret"
+regexes = ['''^963c91a30515053025f255c6e2b4041bb664d59496768ea0391ef75d2e5df735$''', '''^51036f5b4a2d0cac2558b6ec18c463179e1c0240bfa6d69aff0c987423c178a5$''']
+
+[[rules.allowlists]]
+description = "Exact public SHA-256 values of verified upstream console files"
+condition = "AND"
+paths = ['''(^|/)Nethriva/Resources/Consoles/dependencies\.lock\.json$''']
+regexTarget = "secret"
+regexes = ['''^5eb985e1a412d1be6b606ba0d7e912fc0842d873d252bd7ec8a363670dfc800c$''','''^6bb21b0a2d5f5d7ad73e75b80ddc1d844ac770c4426b312d5740f2443455f0c0$''','''^4ddf0e21f07328358974d91aa2d7f839ba2116688b28e43d3f6f4e2eae8c45cf$''','''^76f338d45fb73b7decb7d8b4ef6e95edf7ce9583722c5220642a9be85fc2cc89$''','''^9a1ce4393e1aa4ace5dcdcf7e032f4a1c03a9cb964b4e0e7b7fcffd3a982eb84$''']

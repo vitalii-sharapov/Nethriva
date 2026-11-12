@@ -1,6 +1,14 @@
 import Foundation
 
 enum NethrivaDataProfile {
+    // Hosted XCTest must not read or rewrite the user's Debug/Release library.
+    static let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || NSClassFromString("XCTestCase") != nil
+    private static let testSuite = "com.vitalii.Nethriva.Tests.\(ProcessInfo.processInfo.processIdentifier)"
+    static var effectiveCredentialService: String {
+        isTesting ? testSuite + ".credentials" : credentialService
+    }
+    static var effectiveLegacyCredentialServices: [String] { isTesting ? [] : legacyCredentialServices }
 #if DEBUG
     static let isDevelopment = true
     static let defaultsSuiteName: String? = "com.vitalii.Nethriva.Development"
@@ -14,6 +22,7 @@ enum NethrivaDataProfile {
 #endif
 
     static var defaults: UserDefaults {
+        if isTesting, let defaults = UserDefaults(suiteName: testSuite) { return defaults }
         guard let defaultsSuiteName,
               let defaults = UserDefaults(suiteName: defaultsSuiteName) else {
             return .standard
@@ -22,7 +31,7 @@ enum NethrivaDataProfile {
     }
 
     static var legacyDefaults: UserDefaults? {
-        guard !isDevelopment else { return nil }
+        guard !isDevelopment, !isTesting else { return nil }
         return UserDefaults(suiteName: "com.vitalii.RemoteDeck")
     }
 }

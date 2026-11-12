@@ -8,6 +8,9 @@ import SwiftUI
 struct SSHSessionView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recovery: SessionRecovery
+    @Environment(\.sessionIsSplit) private var isSplit
+    @Environment(\.sessionLifetime) private var lifetime
     @StateObject private var inputController = OpenSSHInputController()
 
     let connection: RemoteConnection
@@ -16,10 +19,14 @@ struct SSHSessionView: View {
     @State private var processEnded = false
     @State private var exitCode: Int32?
     @State private var credentialError: String?
+    @State private var recoveryPending = false
+    @State private var credentialTask: Task<Void, Never>?
 
     var body: some View {
         HSplitView {
             SSHFileTreeView(connection: connection)
+                .frame(width: isSplit ? 0 : nil)
+                .clipped().opacity(isSplit ? 0 : 1).allowsHitTesting(!isSplit).accessibilityHidden(isSplit)
 
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
@@ -31,6 +38,13 @@ struct SSHSessionView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                ConnectionCheckButton(connection: connection).labelStyle(.iconOnly)
+                    if processEnded {
+                        Button("Reconnect", action: reconnect)
+                    } else {
+                        Text(inputController.isAwaitingPassword ? "Authentication" : "Active").font(.caption).foregroundStyle(.secondary)
+                        Button("Disconnect") { recoveryPending = false; inputController.disconnect(); processEnded = true }
+                    }
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 36)
@@ -38,16 +52,24 @@ struct SSHSessionView: View {
                 Divider()
                 terminalPane
             }
-            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: isSplit ? 220 : 420, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: recovery.suspended) { _, suspended in
+            if suspended, !processEnded { recoveryPending = true; inputController.disconnect(); processEnded = true }
+        }
+        .onChange(of: recovery.epoch) { _, _ in
+            if recoveryPending, settings.recoverNetworkSessions { reconnect() }
         }
     }
 
     private var terminalPane: some View {
-        ZStack {
+        let generation = processID
+        return ZStack {
             OpenSSHTerminalSurface(
                 connection: connection,
                 inputController: inputController,
                 onTermination: { code in
+                    guard generation == processID else { return }
                     inputController.processDidEnd()
                     exitCode = code
                     processEnded = true
@@ -67,11 +89,7 @@ struct SSHSessionView: View {
                             .foregroundStyle(.secondary)
                         Text(terminationMessage)
                             .font(.callout)
-                        Button("Reconnect") {
-                            exitCode = nil
-                            processEnded = false
-                            processID = UUID()
-                        }
+                        Button("Reconnect", action: reconnect)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -121,6 +139,7 @@ struct SSHSessionView: View {
     }
 
     private var terminationMessage: String {
+        if recoveryPending { return "Session interrupted. Reconnect when the network is ready; previous commands will not be replayed." }
         guard let exitCode else { return "SSH process ended." }
         return exitCode == 0
             ? "SSH session closed."
@@ -128,12 +147,25 @@ struct SSHSessionView: View {
     }
 
     private func loadSavedPassword() {
-        do {
-            inputController.setSavedPassword(try appState.password(for: connection))
-            credentialError = nil
-        } catch {
-            credentialError = "Could not read the saved password: \(error.localizedDescription)"
+        credentialTask?.cancel()
+        inputController.setSavedPassword(nil)
+        credentialTask = Task {
+            do {
+                let password = try await appState.sessionPassword(for: connection)
+                try Task.checkCancellation()
+                inputController.setSavedPassword(password); credentialError = nil
+            } catch { credentialError = "Could not read the saved password: \(error.localizedDescription)" }
         }
+        let task = credentialTask
+        // Closing a retained tab cancels provider authentication even if its
+        // SwiftUI view has not delivered onDisappear yet.
+        lifetime?.own("credential-fetch") { task?.cancel(); inputController.setSavedPassword(nil) }
+    }
+
+    private func reconnect() {
+        recoveryPending = false; exitCode = nil; processEnded = false
+        loadSavedPassword()
+        processID = UUID()
     }
 }
 
@@ -146,12 +178,22 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
         Coordinator(onTermination: onTermination)
     }
 
-    func makeNSView(context: Context) -> LocalProcessTerminalView {
-        let terminalView = PasswordObservingTerminalView(frame: .zero)
+    func makeNSView(context: Context) -> ManagedProcessTerminalView {
+        let terminalView = PasswordObservingTerminalView(frame: .zero, options: context.environment.terminalAppearance.options)
+        context.environment.terminalAppearance.apply(terminalView)
+        context.coordinator.capture = TerminalCapture(view: terminalView, id: context.environment.sessionTabID, experience: context.environment.terminalExperience)
         terminalView.processDelegate = context.coordinator
         context.coordinator.inputController = inputController
         inputController.attach(to: terminalView)
+        context.environment.sessionLifetime?.focus = { [weak terminalView] in if let terminalView { terminalView.window?.makeFirstResponder(terminalView) } }
+        context.environment.commandRouter?.register(context.environment.sessionTabID, identity: terminalView, ready: { [weak inputController] in inputController?.canInsert == true }) { [weak inputController] in inputController?.insert($0) ?? false }
 
+        do { try SSHInputValidation.validate(connection) }
+        catch {
+            terminalView.feed(text: "The SSH host, account or jump settings are not valid. Review this connection before retrying.\r\n")
+            DispatchQueue.main.async { onTermination(1) }
+            return terminalView
+        }
         let destination = connection.username.isEmpty
             ? connection.host
             : "\(connection.username)@\(connection.host)"
@@ -160,6 +202,7 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
             "-p", String(connection.port),
             "-o", "ConnectTimeout=15",
             "-o", "StrictHostKeyChecking=ask",
+            "-o", "PermitLocalCommand=no",
         ]
 
         let keepAliveInterval = connection.effectiveSSHKeepAliveInterval
@@ -194,12 +237,22 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
         }
         if connection.sshForwardAgent == true {
             arguments.append("-A")
+        } else {
+            arguments += ["-o", "ForwardAgent=no"]
         }
         if connection.sshCompression == true {
             arguments.append("-C")
         }
-        arguments += SSHConnectionReuse.arguments
-        arguments.append(destination)
+        do {
+            arguments += try (connection.sshX11 ?? SSHX11Configuration()).arguments()
+            if connection.sshX11 == nil || connection.sshX11?.mode == .off { arguments += try SSHConnectionReuse.arguments(for: connection) }
+        }
+        catch {
+            terminalView.feed(text: "SSH could not prepare its private transport or X11 display. Review the connection and local display settings.\r\n")
+            DispatchQueue.main.async { onTermination(1) }
+            return terminalView
+        }
+        arguments += ["--", destination]
 
         terminalView.feed(text: "Connecting with macOS OpenSSH…\r\n")
         if let identityFile = normalized(connection.sshIdentityFile) {
@@ -212,19 +265,22 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
             currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
         )
 
-        DispatchQueue.main.async {
+        context.coordinator.focus.update(context.environment.sessionIsActive) {
             terminalView.window?.makeFirstResponder(terminalView)
         }
         return terminalView
     }
 
-    func updateNSView(_ terminalView: LocalProcessTerminalView, context: Context) {
+    func updateNSView(_ terminalView: ManagedProcessTerminalView, context: Context) {
+        context.environment.commandRouter?.register(context.environment.sessionTabID, identity: terminalView, ready: { [weak inputController] in inputController?.canInsert == true }) { [weak inputController] in inputController?.insert($0) ?? false }
         context.coordinator.onTermination = onTermination
         context.coordinator.inputController = inputController
+        context.coordinator.focus.update(context.environment.sessionIsActive) { terminalView.window?.makeFirstResponder(terminalView) }
     }
 
-    static func dismantleNSView(_ terminalView: LocalProcessTerminalView, coordinator: Coordinator) {
+    static func dismantleNSView(_ terminalView: ManagedProcessTerminalView, coordinator: Coordinator) {
         terminalView.processDelegate = nil
+        coordinator.capture?.close()
         coordinator.inputController?.detach(from: terminalView)
         terminalView.terminate()
     }
@@ -245,6 +301,9 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
             values.removeAll { $0.hasPrefix("\(name)=") }
             values.append("\(name)=\(value)")
         }
+        if let x11 = connection.sshX11, x11.mode != .off, SSHX11Configuration.validDisplay(x11.display) {
+            values.removeAll { $0.hasPrefix("DISPLAY=") }; values.append("DISPLAY=\(x11.display)")
+        }
         return values
     }
 
@@ -254,7 +313,9 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
+    final class Coordinator: NSObject, ManagedProcessTerminalViewDelegate {
+        var capture: TerminalCapture?
+        let focus = SessionFocusGate()
         var onTermination: (Int32?) -> Void
         weak var inputController: OpenSSHInputController?
 
@@ -262,22 +323,25 @@ private struct OpenSSHTerminalSurface: NSViewRepresentable {
             self.onTermination = onTermination
         }
 
-        func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
-        func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
+        func sizeChanged(source: ManagedProcessTerminalView, newCols: Int, newRows: Int) {}
+        func setTerminalTitle(source: ManagedProcessTerminalView, title: String) {}
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { TerminalLinkSecurity.open(link) }
 
         func processTerminated(source: TerminalView, exitCode: Int32?) {
             let normalizedCode = exitCode.map { code in
                 code > 255 ? (code >> 8) & 0xff : code
             }
-            DispatchQueue.main.async { [onTermination] in
+            DispatchQueue.main.async { [weak self, onTermination] in
+                self?.capture?.close()
                 onTermination(normalizedCode)
             }
         }
     }
 }
 
-private final class PasswordObservingTerminalView: PasteableLocalProcessTerminalView {
+class PasswordObservingTerminalView: PasteableLocalProcessTerminalView {
+    private(set) var authenticationPrompt = false
     var passwordPromptObserver: (() -> Void)?
     var submittedInputObserver: (() -> Void)?
     private var promptTail = ""
@@ -288,7 +352,8 @@ private final class PasswordObservingTerminalView: PasteableLocalProcessTerminal
         // Terminal output can arrive in very small fragments. Keep prompt
         // detection local to the AppKit view so normal command output does not
         // allocate byte arrays or enqueue work on SwiftUI's main actor.
-        promptTail = String((promptTail + String(decoding: slice, as: UTF8.self)).suffix(160))
+        promptTail = String((promptTail + String(decoding: slice.suffix(160), as: UTF8.self)).suffix(160))
+        if ["password:", "passphrase", "verification code", "one-time", "continue connecting (yes/no"].contains(where: { promptTail.localizedCaseInsensitiveContains($0) }) { authenticationPrompt = true }
         if promptTail.localizedCaseInsensitiveContains("password:") {
             promptTail = ""
             passwordPromptObserver?()
@@ -298,11 +363,15 @@ private final class PasswordObservingTerminalView: PasteableLocalProcessTerminal
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         super.send(source: source, data: data)
         guard data.contains(10) || data.contains(13) else { return }
+        authenticationPrompt = false
         submittedInputObserver?()
     }
 }
 
-private final class OpenSSHInputController: ObservableObject {
+@MainActor final class OpenSSHInputController: ObservableObject {
+    private let credentialGate: CredentialAccessGate
+    init(credentialGate: CredentialAccessGate = .shared) { self.credentialGate = credentialGate }
+    var canInsert: Bool { !credentialGate.isLocked && terminalView != nil && !isAwaitingPassword && (terminalView as? PasswordObservingTerminalView)?.authenticationPrompt != true }
     @Published private(set) var isAwaitingPassword = false
     @Published private var savedPassword: String?
 
@@ -311,13 +380,17 @@ private final class OpenSSHInputController: ObservableObject {
         return !savedPassword.isEmpty
     }
 
-    private weak var terminalView: LocalProcessTerminalView?
+    private weak var terminalView: ManagedProcessTerminalView?
+    private var generation = UUID()
     func setSavedPassword(_ password: String?) {
-        savedPassword = password
+        savedPassword = password.flatMap { value in
+            value.utf8.count <= 65536 && value.rangeOfCharacter(from: .controlCharacters) == nil ? value : nil
+        }
     }
 
     func attach(to terminalView: PasswordObservingTerminalView) {
         self.terminalView = terminalView
+        generation = UUID()
         isAwaitingPassword = false
 
         terminalView.passwordPromptObserver = { [weak self] in
@@ -328,18 +401,19 @@ private final class OpenSSHInputController: ObservableObject {
         }
     }
 
-    func detach(from terminalView: LocalProcessTerminalView) {
+    func detach(from terminalView: ManagedProcessTerminalView) {
         if let terminalView = terminalView as? PasswordObservingTerminalView {
             terminalView.passwordPromptObserver = nil
             terminalView.submittedInputObserver = nil
         }
         if self.terminalView === terminalView {
+            generation = UUID()
             self.terminalView = nil
         }
     }
 
     func sendSavedPassword() {
-        guard let terminalView, let savedPassword, !savedPassword.isEmpty else { return }
+        guard !credentialGate.isLocked, isAwaitingPassword, let terminalView, let savedPassword, !savedPassword.isEmpty else { return }
         let bytes = Array((savedPassword + "\r").utf8)
         terminalView.send(source: terminalView, data: bytes[...])
         isAwaitingPassword = false
@@ -347,19 +421,31 @@ private final class OpenSSHInputController: ObservableObject {
     }
 
     func processDidEnd() {
+        generation = UUID()
         isAwaitingPassword = false
         terminalView = nil
+        savedPassword = nil
+    }
+
+    func disconnect() { generation = UUID(); terminalView?.terminate(); terminalView = nil; isAwaitingPassword = false; savedPassword = nil }
+    func insert(_ text: String) -> Bool {
+        guard canInsert, let terminalView else { return false }
+        terminalView.send(source: terminalView, data: Array(text.utf8)[...]); return true
     }
 
     private func passwordPromptDetected() {
+        let generation = generation
         DispatchQueue.main.async { [weak self] in
-            self?.isAwaitingPassword = true
+            guard self?.generation == generation else { return }
+            if self?.isAwaitingPassword == false { self?.isAwaitingPassword = true }
         }
     }
 
     private func inputSubmitted() {
+        let generation = generation
         DispatchQueue.main.async { [weak self] in
-            self?.isAwaitingPassword = false
+            guard self?.generation == generation else { return }
+            if self?.isAwaitingPassword == true { self?.isAwaitingPassword = false }
         }
     }
 }

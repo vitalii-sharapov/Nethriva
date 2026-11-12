@@ -6,6 +6,15 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
+      <PreActions>
+         <ExecutionAction ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent title = "Check upstream component versions" scriptText = "mkdir -p &quot;$PROJECT_TEMP_DIR&quot;&#10;if [ &quot;$CONFIGURATION&quot; != Debug ]; then&#10;  rm -f &quot;$PROJECT_TEMP_DIR/Nethriva-dependency-preflight.json&quot;&#10;  /usr/bin/python3 -B &quot;$SRCROOT/scripts/check-dependency-updates.py&quot; --require-current-toolchain --report &quot;$PROJECT_TEMP_DIR/Nethriva-dependency-preflight.json&quot;&#10;else&#10;  printf '{&quot;schema&quot;:1,&quot;status&quot;:&quot;debug-build&quot;}\n' &gt; &quot;$PROJECT_TEMP_DIR/Nethriva-dependency-preflight.json&quot;&#10;fi&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "A00000000000000000000501" BuildableName = "Nethriva.app" ReferencedContainer = "container:Nethriva.xcodeproj"/>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -42,7 +51,7 @@
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Release"
+      buildConfiguration = "Development"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"

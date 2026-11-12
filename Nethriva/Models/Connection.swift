@@ -6,6 +6,9 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
     case telnet
     case serial
     case rdp
+    case virtualization
+    case vnc
+    case spice
 
     var id: String { rawValue }
 
@@ -16,6 +19,9 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .telnet: "Telnet"
         case .serial: "Serial"
         case .rdp: "RDP"
+        case .virtualization: "Virtualization Host"
+        case .vnc: "VNC Console"
+        case .spice: "SPICE Console"
         }
     }
 
@@ -26,6 +32,8 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .telnet: "network"
         case .serial: "cable.connector"
         case .rdp: "display"
+        case .virtualization: "server.rack"
+        case .vnc, .spice: "desktopcomputer"
         }
     }
 
@@ -36,6 +44,9 @@ enum ConnectionKind: String, Codable, CaseIterable, Identifiable {
         case .telnet: 23
         case .serial: 0
         case .rdp: 3389
+        case .virtualization: 8006
+        case .vnc: 5900
+        case .spice: 5930
         }
     }
 }
@@ -100,6 +111,18 @@ enum RDPAudioMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum RDPSecurityMode: String, Codable, CaseIterable, Identifiable {
+    case nla, tls, legacyRDP
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .nla: "NLA (Recommended)"
+        case .tls: "TLS Compatibility"
+        case .legacyRDP: "Legacy RDP (Unverified)"
+        }
+    }
+}
+
 enum RDPCertificatePolicy: String, Codable, CaseIterable, Identifiable {
     case trustOnFirstUse
     case systemValidation
@@ -155,6 +178,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
     var sshForwardAgent: Bool?
     var sshCompression: Bool?
     var sshKeepAliveInterval: Int?
+    var sshX11: SSHX11Configuration?
     var serialBaudRate: Int?
     var serialDataBits: Int?
     var serialParity: SerialParity?
@@ -179,9 +203,15 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
     var rdpNetworkProfile: RDPNetworkProfile?
     var rdpGraphicsAcceleration: Bool?
     var rdpCertificatePolicy: RDPCertificatePolicy?
+    var rdpSecurityMode: RDPSecurityMode?
     var rdpAdminSession: Bool?
     var rdpAutoReconnect: Bool?
     var rdpReconnectRetries: Int?
+    var virtualization: VirtualizationConfiguration?
+    var rdpVirtualMachineID: String?
+    var terminalProfileID: UUID?
+    var terminalAppearance: TerminalAppearance?
+    var inheritedFields: Set<DefaultField>?
 
     init(
         id: UUID = UUID(),
@@ -200,6 +230,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         sshForwardAgent: Bool? = nil,
         sshCompression: Bool? = nil,
         sshKeepAliveInterval: Int? = nil,
+        sshX11: SSHX11Configuration? = nil,
         serialBaudRate: Int? = nil,
         serialDataBits: Int? = nil,
         serialParity: SerialParity? = nil,
@@ -224,9 +255,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         rdpNetworkProfile: RDPNetworkProfile? = nil,
         rdpGraphicsAcceleration: Bool? = nil,
         rdpCertificatePolicy: RDPCertificatePolicy? = nil,
+        rdpSecurityMode: RDPSecurityMode? = nil,
         rdpAdminSession: Bool? = nil,
         rdpAutoReconnect: Bool? = nil,
-        rdpReconnectRetries: Int? = nil
+        rdpReconnectRetries: Int? = nil,
+        virtualization: VirtualizationConfiguration? = nil,
+        rdpVirtualMachineID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -244,6 +278,7 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         self.sshForwardAgent = sshForwardAgent
         self.sshCompression = sshCompression
         self.sshKeepAliveInterval = sshKeepAliveInterval
+        self.sshX11 = sshX11
         self.serialBaudRate = serialBaudRate
         self.serialDataBits = serialDataBits
         self.serialParity = serialParity
@@ -268,9 +303,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
         self.rdpNetworkProfile = rdpNetworkProfile
         self.rdpGraphicsAcceleration = rdpGraphicsAcceleration
         self.rdpCertificatePolicy = rdpCertificatePolicy
+        self.rdpSecurityMode = rdpSecurityMode
         self.rdpAdminSession = rdpAdminSession
         self.rdpAutoReconnect = rdpAutoReconnect
         self.rdpReconnectRetries = rdpReconnectRetries
+        self.virtualization = virtualization
+        self.rdpVirtualMachineID = rdpVirtualMachineID
     }
 
     var effectiveSSHAuthentication: SSHAuthenticationMode {
@@ -292,11 +330,12 @@ struct RemoteConnection: Identifiable, Codable, Hashable {
     var effectiveRDPWidth: Int { min(max(rdpWidth ?? 1600, 640), 7680) }
     var effectiveRDPHeight: Int { min(max(rdpHeight ?? 1000, 480), 4320) }
     var effectiveRDPScale: Int { [100, 140, 180].contains(rdpScale ?? 100) ? (rdpScale ?? 100) : 100 }
-    var effectiveRDPClipboard: Bool { rdpClipboard ?? true }
+    var effectiveRDPClipboard: Bool { rdpClipboard ?? false }
     var effectiveRDPAudioMode: RDPAudioMode { rdpAudioMode ?? .local }
     var effectiveRDPNetworkProfile: RDPNetworkProfile { rdpNetworkProfile ?? .automatic }
     var effectiveRDPGraphicsAcceleration: Bool { rdpGraphicsAcceleration ?? true }
-    var effectiveRDPCertificatePolicy: RDPCertificatePolicy { rdpCertificatePolicy ?? .trustOnFirstUse }
+    var effectiveRDPCertificatePolicy: RDPCertificatePolicy { rdpCertificatePolicy ?? .systemValidation }
+    var effectiveRDPSecurityMode: RDPSecurityMode { rdpSecurityMode ?? .nla }
     var effectiveRDPAutoReconnect: Bool { rdpAutoReconnect ?? true }
     var effectiveRDPReconnectRetries: Int { min(max(rdpReconnectRetries ?? 10, 0), 1000) }
 

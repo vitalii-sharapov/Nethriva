@@ -97,6 +97,8 @@ struct NethrivaHelpCommands: Commands {
 
             Divider()
 
+            Button("Check for Updates…") { openWindow(id: "verified-updates") }
+
             Button("Support Nethriva on Ko-fi…") {
                 NSWorkspace.shared.open(NethrivaLinks.koFi)
             }

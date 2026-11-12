@@ -1,0 +1,90 @@
+--- a/libfreerdp/gdi/gfx.c
++++ b/libfreerdp/gdi/gfx.c
+@@ -1315,6 +1315,45 @@
+  * @return 0 on success, otherwise a Win32 error code
+  */
+ WINPR_ATTR_NODISCARD
++/* Nethriva's canvas is limited to 8192 x 8192. Account from the owned surface
++ * table under context->mux, so deletion/reset automatically refunds both the
++ * byte and object budgets and no detached accounting can become stale. */
++#define NETHRIVA_GFX_MAX_DIMENSION 8192u
++#define NETHRIVA_GFX_MAX_SURFACES 256u
++#define NETHRIVA_GFX_MAX_SESSION_BYTES (512ull * 1024 * 1024)
++#define NETHRIVA_GFX_MAX_SURFACE_BYTES \
++	((NETHRIVA_GFX_MAX_DIMENSION * 4ull + 16) * NETHRIVA_GFX_MAX_DIMENSION)
++
++static UINT nethriva_gdi_check_surface_budget(RdpgfxClientContext* context, UINT16 surfaceId,
++                                               UINT32 scanline, UINT32 height)
++{
++	UINT16* ids = nullptr;
++	UINT16 count = 0;
++	UINT64 total = 1ull * scanline * height;
++	UINT result = ERROR_NOT_ENOUGH_MEMORY;
++	if (!context->GetSurfaceIds || !context->GetSurfaceData || total == 0 ||
++	    total > NETHRIVA_GFX_MAX_SURFACE_BYTES)
++		return ERROR_INVALID_DATA;
++	UINT status = context->GetSurfaceIds(context, &ids, &count);
++	if (status != CHANNEL_RC_OK) { free(ids); return status; }
++	if (count >= NETHRIVA_GFX_MAX_SURFACES || (count > 0 && !ids)) goto done;
++	for (UINT32 index = 0; index < count; index++)
++	{
++		/* CREATE must not silently replace a live allocation with the same ID. */
++		if (ids[index] == surfaceId) { result = ERROR_INVALID_DATA; goto done; }
++		const gdiGfxSurface* existing = context->GetSurfaceData(context, ids[index]);
++		if (!existing) continue;
++		const UINT64 bytes = 1ull * existing->scanline * existing->height;
++		if (bytes > NETHRIVA_GFX_MAX_SESSION_BYTES - total) goto done;
++		total += bytes;
++	}
++	result = CHANNEL_RC_OK;
++done:
++	free(ids);
++	return result;
++}
++
++WINPR_ATTR_NODISCARD
+ static UINT gdi_CreateSurface(RdpgfxClientContext* context,
+                               const RDPGFX_CREATE_SURFACE_PDU* createSurface)
+ {
+@@ -1327,6 +1366,13 @@
+ 	WINPR_ASSERT(gdi);
+ 	WINPR_ASSERT(gdi->context);
+ 	EnterCriticalSection(&context->mux);
++	if (createSurface->width == 0 || createSurface->height == 0 ||
++	    createSurface->width > NETHRIVA_GFX_MAX_DIMENSION ||
++	    createSurface->height > NETHRIVA_GFX_MAX_DIMENSION)
++	{
++		rc = ERROR_INVALID_DATA;
++		goto fail;
++	}
+ 	surface = (gdiGfxSurface*)calloc(1, sizeof(gdiGfxSurface));
+ 
+ 	if (!surface)
+@@ -1378,6 +1424,14 @@
+ 	/* Align to multiples of 16, but also add additional 16 bytes so SIMD implementations do not
+ 	 * accidentally read out of bound */
+ 	surface->scanline = gfx_align_scanline(surface->width * 4UL, 16) + 16ul;
++	const UINT budget = nethriva_gdi_check_surface_budget(
++	    context, surface->surfaceId, surface->scanline, surface->height);
++	if (budget != CHANNEL_RC_OK)
++	{
++		free(surface);
++		rc = budget;
++		goto fail;
++	}
+ 	surface->data = (BYTE*)winpr_aligned_calloc(surface->scanline, surface->height, 16);
+ 
+ 	if (!surface->data)
+@@ -1392,6 +1446,12 @@
+ 
+ 	WINPR_ASSERT(context->SetSurfaceData);
+ 	rc = context->SetSurfaceData(context, surface->surfaceId, (void*)surface);
++	if (rc != CHANNEL_RC_OK)
++	{
++		region16_uninit(&surface->invalidRegion);
++		winpr_aligned_free(surface->data);
++		free(surface);
++	}
+ fail:
+ 	LeaveCriticalSection(&context->mux);
+ 	return rc;

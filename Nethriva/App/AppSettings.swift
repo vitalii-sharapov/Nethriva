@@ -7,9 +7,14 @@ final class AppSettings: ObservableObject {
         static let showSidebarUsernames = "settings.showSidebarUsernames"
         static let showSessionAddresses = "settings.showSessionAddresses"
         static let showSessionUsernames = "settings.showSessionUsernames"
+        static let recoverNetworkSessions = "settings.recoverNetworkSessions"
     }
 
     private let defaults: UserDefaults
+
+    @Published var recoverNetworkSessions: Bool {
+        didSet { defaults.set(recoverNetworkSessions, forKey: Key.recoverNetworkSessions) }
+    }
 
     @Published var showSidebarAddresses: Bool {
         didSet { defaults.set(showSidebarAddresses, forKey: Key.showSidebarAddresses) }
@@ -29,6 +34,7 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = NethrivaDataProfile.defaults) {
         self.defaults = defaults
+        recoverNetworkSessions = defaults.object(forKey: Key.recoverNetworkSessions) as? Bool ?? false
         showSidebarAddresses = defaults.object(forKey: Key.showSidebarAddresses) as? Bool ?? true
         showSidebarUsernames = defaults.bool(forKey: Key.showSidebarUsernames)
         showSessionAddresses = defaults.object(forKey: Key.showSessionAddresses) as? Bool ?? true

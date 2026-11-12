@@ -10,19 +10,22 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Resolve packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project Nethriva.xcodeproj \
-            -scheme Nethriva
+        run: bash scripts/prepare-swift-packages.sh "$RUNNER_TEMP/NethrivaPackages"
 
       - name: Run tests
         run: |
@@ -31,7 +34,9 @@ jobs:
             -scheme Nethriva \
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/NethrivaDerivedData" \
-            CODE_SIGNING_ALLOWED=NO
+            -resultBundlePath "$RUNNER_TEMP/NethrivaTests.xcresult" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
+            -disableAutomaticPackageResolution -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 
       - name: Verify Release build
         run: |
@@ -41,10 +46,40 @@ jobs:
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/NethrivaReleaseData" \
-            CODE_SIGNING_ALLOWED=NO
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
+            -disableAutomaticPackageResolution -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 
       - name: Validate bundled RDP bridge
         run: |
           test -f Nethriva/Resources/FreeRDP/Frameworks/libNethrivaRDP.dylib
           nm -gU Nethriva/Resources/FreeRDP/Frameworks/libNethrivaRDP.dylib |
             grep NethrivaRDPConfigureOpenSSL
+
+      - name: Test signed release archive packaging
+        if: runner.arch == 'ARM64'
+        run: |
+          app="$RUNNER_TEMP/NethrivaReleaseData/Build/Products/Release/Nethriva.app"
+          codesign --force --deep --sign - "$app"
+          /bin/zsh scripts/test-release-packaging.sh "$app"
+          swift scripts/smoke-rdp-runtime.swift "$app"
+
+      - name: Cross-build universal application core
+        if: matrix.os == 'macos-26'
+        run: |
+          xcodebuild build -project Nethriva.xcodeproj -scheme Nethriva \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/NethrivaUniversal" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
+            -disableAutomaticPackageResolution -skipPackagePluginValidation \
+            ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO
+          lipo -verify_arch arm64 x86_64 "$RUNNER_TEMP/NethrivaUniversal/Build/Products/Release/Nethriva.app/Contents/MacOS/Nethriva"
+          # Cross-compilation is not Intel runtime acceptance. Universal release
+          # packaging separately requires a validated x86_64 RDP resource bundle.
+
+      - name: Retain synthetic test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tests-${{ matrix.os }}
+          path: ${{ runner.temp }}/NethrivaTests.xcresult
+          retention-days: 7

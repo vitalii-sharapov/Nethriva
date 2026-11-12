@@ -21,4 +21,12 @@
 
 @implementation MRDPCursor
 
+- (void)dealloc
+{
+	[nsCursor release];
+	[nsImage release];
+	[bmiRep release];
+	[super dealloc];
+}
+
 @end

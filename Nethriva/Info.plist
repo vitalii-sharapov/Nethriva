@@ -2,8 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NethrivaUpdatePublicKey</key>
+	<string>$(NETHRIVA_UPDATE_PUBLIC_KEY)</string>
     <key>UTExportedTypeDeclarations</key>
     <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.vitalii.nethriva.shared-library</string>
+            <key>UTTypeDescription</key>
+            <string>Nethriva Shared Library</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.json</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>nethriva-shared</string></array></dict>
+        </dict>
         <dict>
             <key>UTTypeIdentifier</key>
             <string>com.vitalii.nethriva.sidebar-items</string>

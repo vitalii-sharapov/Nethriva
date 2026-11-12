@@ -76,6 +76,7 @@ struct CredentialManagerView: View {
                         .textContentType(.username)
                     TextField("Windows Domain (optional)", text: $domain)
                     SecureField("New Password", text: $newPassword)
+                        .disabled(appState.externalCredentials.references[draftID] != nil)
                         .textContentType(.newPassword)
                         .onChange(of: newPassword) { _, value in
                             if !value.isEmpty { removeSavedPassword = false }
@@ -93,6 +94,11 @@ struct CredentialManagerView: View {
                                 removeSavedPassword = true
                             }
                         }
+                    }
+                }
+                if !isCreating {
+                    Section("External credential provider") {
+                        ExternalCredentialSettingsView(profileID: draftID, providers: appState.externalCredentials)
                     }
                 }
                 Section {

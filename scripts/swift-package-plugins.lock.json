@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "packages": [
+    {
+      "identity": "swiftterm",
+      "checkout": "SwiftTerm",
+      "revision": "282c3c3a932b55c129628876b70f37d993af1615",
+      "filesSHA256": {
+        "Package.swift": "448fef1d90cfb8387efb3029709e38c9943b7e0795eeea6f5958337422d27422",
+        "Plugins/SwiftTermBuildInfoPlugin/plugin.swift": "f687340542eeea5a4a3eb596b137aebc269460281a67b3105b37f2604ab02eef",
+        "Sources/SwiftTermBuildInfoGenerator/BuildInfoGenerator.swift": "ff30c1359fbd8ec1ae8e43dc20366c007b6c5e342e73060921246c0342369cdd",
+        "Sources/SwiftTermBuildInfoGenerator/TerminfoSource.swift": "340baf55bbf94fd4ea7db600c1d2a646fbb3fb9053a2138afe5432ce28dd75f1",
+        "Sources/SwiftTermBuildInfoGenerator/XtgettcapTableGenerator.swift": "02467e6425e37418c0a0f079dfcb193b88443d686079670cafedd720162fad0f",
+        "swifterm-terminfo": "7819298c1e79b7ba292960fbab41d6604240cf9111f7f3617b775701e008276b"
+      }
+    }
+  ]
+}

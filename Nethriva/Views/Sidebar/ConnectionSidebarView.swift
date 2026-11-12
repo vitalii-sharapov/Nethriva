@@ -4,6 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ConnectionSidebarView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
     let onNewConnection: (String?) -> Void
     let onEditConnection: (RemoteConnection) -> Void
@@ -13,6 +14,7 @@ struct ConnectionSidebarView: View {
     @State private var newGroupParent: String?
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
+    @FocusState private var isSidebarFocused: Bool
     @State private var collapsedGroups: Set<String> = []
     @State private var renameRequest: RemoteConnection?
     @State private var renamedConnectionName = ""
@@ -27,6 +29,7 @@ struct ConnectionSidebarView: View {
     @State private var isFavoritesDropTarget = false
 
     var body: some View {
+        ScrollViewReader { proxy in
         List {
             if isSearching {
                 Section("Search Results") {
@@ -77,6 +80,30 @@ struct ConnectionSidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .focusable().focused($isSidebarFocused)
+        .accessibilityLabel("Connection library")
+        .onKeyPress(.downArrow) { navigateSidebar(1) }
+        .onKeyPress(.upArrow) { navigateSidebar(-1) }
+        .onKeyPress(.leftArrow) {
+            guard isSidebarFocused, let item = selectionAnchor, case .group(let path) = item else { return .ignored }
+            collapsedGroups.insert(path); return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            guard isSidebarFocused, let item = selectionAnchor, case .group(let path) = item else { return .ignored }
+            collapsedGroups.remove(path); return .handled
+        }
+        .onKeyPress(.return) {
+            guard isSidebarFocused else { return .ignored }
+            if let item = selectionAnchor, case .group(let group) = item {
+                if collapsedGroups.contains(group) { collapsedGroups.remove(group) } else { collapsedGroups.insert(group) }
+            } else { appState.openSelectedConnection() }
+            return .handled
+        }
+        .onKeyPress(phases: .down) { press in
+            guard isSidebarFocused, press.modifiers.intersection([.command, .control, .option]).isEmpty,
+                  !press.characters.isEmpty, press.characters.rangeOfCharacter(from: .controlCharacters) == nil else { return .ignored }
+            searchText += press.characters; isSearchFocused = true; return .handled
+        }
         .navigationTitle("Nethriva")
         .safeAreaInset(edge: .top) {
             HStack(spacing: 6) {
@@ -238,6 +265,10 @@ struct ConnectionSidebarView: View {
             selectionAnchor = nil
             appState.selectedConnectionID = nil
         }
+        .onChange(of: selectionAnchor) { _, item in
+            if let item { proxy.scrollTo(item, anchor: .center) }
+        }
+        }
     }
 
     private var isSearching: Bool {
@@ -246,7 +277,7 @@ struct ConnectionSidebarView: View {
 
     private var searchResults: [RemoteConnection] {
         appState.connections
-            .filter { ConnectionSearch.matches($0, query: searchText) }
+            .filter { ConnectionSearch.matches(appState.resolvedConnection(for: $0), query: searchText) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -318,6 +349,7 @@ struct ConnectionSidebarView: View {
     }
 
     private func select(_ item: SidebarSelectionItem, modifiers: NSEvent.ModifierFlags) {
+        isSidebarFocused = true
         let updated = SidebarSelection.update(
             selected: selectedItems,
             anchor: selectionAnchor,
@@ -337,6 +369,12 @@ struct ConnectionSidebarView: View {
                 updated.selected.contains(.connection($0.id))
             }?.id
         }
+    }
+    private func navigateSidebar(_ offset: Int) -> KeyPress.Result {
+        guard isSidebarFocused, !visibleItems.isEmpty else { return .ignored }
+        let index = selectionAnchor.flatMap { visibleItems.firstIndex(of: $0) } ?? (offset > 0 ? -1 : visibleItems.count)
+        select(visibleItems[min(max(index + offset, 0), visibleItems.count - 1)], modifiers: currentModifiers.intersection(.shift))
+        return .handled
     }
 
     private func childGroups(of parent: String) -> [String] {
@@ -407,8 +445,14 @@ struct ConnectionSidebarView: View {
                 Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
+            .accessibilityLabel("Actions for group \(groupName)")
         }
         .frame(minHeight: 28)
+        .id(SidebarSelectionItem.group(groupName))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Group \(groupName)")
+        .accessibilityValue(selectedItems.contains(.group(groupName)) ? "Selected" : "Not selected")
+        .accessibilityAction(named: "Select group") { select(.group(groupName), modifiers: []) }
         .contentShape(Rectangle())
         .contextMenu {
             groupActions(for: groupName)
@@ -441,6 +485,7 @@ struct ConnectionSidebarView: View {
             onNewConnection(groupName)
         }
         if groupName != "Ungrouped" {
+            Button("Group Defaults…") { appState.toolsGroupRequest = groupName; openWindow(id: "library-tools") }
             Button("New Subgroup…") {
                 beginNewGroup(under: groupName)
             }
@@ -468,6 +513,7 @@ struct ConnectionSidebarView: View {
     @ViewBuilder
     private var selectedConnectionActions: some View {
         if let connection = appState.selectedConnection {
+            ConnectionCheckButton(connection: connection)
             Button("Open") {
                 appState.open(connection)
             }
@@ -527,6 +573,12 @@ struct ConnectionSidebarView: View {
     @ViewBuilder
     private func row(_ connection: RemoteConnection) -> some View {
         let content = draggableRowLabel(connection)
+            .id(SidebarSelectionItem.connection(connection.id))
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(selectedItems.contains(.connection(connection.id)) ? "Selected" : "Not selected")
+            .accessibilityAction(named: "Select connection") { select(.connection(connection.id), modifiers: []) }
+            .accessibilityAction(named: "Open connection") { appState.open(connection) }
+            .accessibilityAction(named: "Rename connection") { if connection.kind != .localShell { beginRename(connection) } }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .simultaneousGesture(
@@ -548,6 +600,8 @@ struct ConnectionSidebarView: View {
                     appState.open(connection)
                 }
 
+                ConnectionCheckButton(connection: connection)
+
                 if connection.kind == .ssh {
                     Button("Open SFTP Browser") {
                         appState.openSFTP(connection)
@@ -555,6 +609,11 @@ struct ConnectionSidebarView: View {
                 }
 
                 if connection.kind != .localShell {
+                    Button("Bulk Edit Selected…") {
+                        var ids = Set(selectedItems.compactMap { item -> UUID? in if case .connection(let id) = item { return id }; return nil })
+                        if !ids.contains(connection.id) { ids = [connection.id] }
+                        appState.bulkEditIDs = ids; openWindow(id: "bulk-edit")
+                    }
                     Button("Edit…") {
                         onEditConnection(connection)
                     }

@@ -1,0 +1,92 @@
+name: Security Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets-and-dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install checksum-pinned scanners
+        run: python3 scripts/install-security-tools.py --directory "$RUNNER_TEMP/security-tools"
+      - name: Check workflow policy, source/history secrets and indexed vulnerabilities
+        run: bash scripts/security-scan.sh "$RUNNER_TEMP/security-results" "$RUNNER_TEMP/security-tools"
+      - name: Retain redacted reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: redacted-security-scans
+          path: ${{ runner.temp }}/security-results
+          retention-days: 7
+
+  regression:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test app and security boundaries on arm64
+        run: bash scripts/security-test.sh "$RUNNER_TEMP/security-tests"
+      - name: Retain synthetic test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-regressions
+          path: ${{ runner.temp }}/security-tests/Tests.xcresult
+          retention-days: 7
+
+  swift-codeql:
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-extended
+      - name: Build Swift application for analysis
+        run: |
+          bash scripts/prepare-swift-packages.sh "$RUNNER_TEMP/NethrivaPackages"
+          xcodebuild build -project Nethriva.xcodeproj -scheme Nethriva \
+            -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
+            -disableAutomaticPackageResolution -skipPackagePluginValidation \
+            -derivedDataPath "$RUNNER_TEMP/codeql-data" CODE_SIGNING_ALLOWED=NO
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+
+  acceptance:
+    if: always()
+    needs: [secrets-and-dependencies, regression, swift-codeql]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail if a required security check failed or was skipped
+        env:
+          SCANS: ${{ needs.secrets-and-dependencies.result }}
+          REGRESSION: ${{ needs.regression.result }}
+          CODEQL: ${{ needs.swift-codeql.result }}
+        run: test "$SCANS" = success && test "$REGRESSION" = success && test "$CODEQL" = success

@@ -102,12 +102,14 @@ final class EmbeddedRDPSession {
         Double
     ) -> Int32
     private typealias DestroyFunction = @convention(c) (UnsafeMutableRawPointer?) -> Void
+    private typealias SetConfigPathFunction = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> Int32
 
     private var library: UnsafeMutableRawPointer?
     private var session: UnsafeMutableRawPointer?
     private var viewStorage: NSView?
 
     private let startFunction: StartFunction
+    private let setConfigPathFunction: SetConfigPathFunction
     private let stateFunction: StateFunction
     private let takeSavedCredentialsFunction: TakeSavedCredentialsFunction
     private let freeCredentialStringFunction: FreeCredentialStringFunction
@@ -127,7 +129,7 @@ final class EmbeddedRDPSession {
     }
 
     init(viewportSize: CGSize) throws {
-        guard let runtimeRoot = Bundle.main.resourceURL?.appendingPathComponent("FreeRDP") else {
+        guard let runtimeRoot = RDPRuntimeArchitecture.root(resourceURL: Bundle.main.resourceURL) else {
             throw EmbeddedRDPError.runtimeMissing
         }
 
@@ -138,7 +140,7 @@ final class EmbeddedRDPSession {
             .appendingPathComponent("Frameworks/ossl-modules", isDirectory: true)
 
         guard FileManager.default.fileExists(atPath: libraryURL.path) else {
-            throw EmbeddedRDPError.runtimeMissing
+            throw EmbeddedRDPError.loadFailed("No compatible runtime is included for \(RDPRuntimeArchitecture.current). Use a release with the matching RDP runtime. Other session types remain available.")
         }
         guard let library = dlopen(libraryURL.path, RTLD_NOW | RTLD_LOCAL) else {
             let message = dlerror().map { String(cString: $0) } ?? "Unknown loader error"
@@ -161,6 +163,7 @@ final class EmbeddedRDPSession {
         let create: CreateViewFunction = try Self.symbol("NethrivaRDPCreateView", from: library)
         let getView: GetViewFunction = try Self.symbol("NethrivaRDPGetView", from: library)
         startFunction = try Self.symbol("NethrivaRDPStart", from: library)
+        setConfigPathFunction = try Self.symbol("NethrivaRDPSetConfigPath", from: library)
         stateFunction = try Self.symbol("NethrivaRDPConnectionState", from: library)
         takeSavedCredentialsFunction = try Self.symbol("NethrivaRDPTakeSavedCredentials", from: library)
         freeCredentialStringFunction = try Self.symbol("NethrivaRDPFreeCredentialString", from: library)
@@ -193,6 +196,10 @@ final class EmbeddedRDPSession {
     }
 
     func start(arguments: [String]) throws {
+        let directory = try RDPCertificateStorage.directory()
+        guard directory.path.withCString({ setConfigPathFunction(session, $0) }) == 1 else {
+            throw EmbeddedRDPError.loadFailed("The private RDP certificate store could not be opened. Existing trust records were preserved.")
+        }
         let strings = arguments.map { strdup($0) }
         defer { strings.forEach { free($0) } }
         let pointers: [UnsafePointer<CChar>?] = strings.map { pointer in
@@ -251,6 +258,21 @@ final class EmbeddedRDPSession {
 
     func paste() {
         pasteFunction(session)
+    }
+
+    func sendCtrlAltDel() {
+        guard session != nil, let viewStorage else { return }
+        let modifiers: NSEvent.ModifierFlags = [.control, .option]
+        func event(_ type: NSEvent.EventType, flags: NSEvent.ModifierFlags) -> NSEvent? {
+            NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: viewStorage.window?.windowNumber ?? 0, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 117)
+        }
+        if let down = event(.keyDown, flags: modifiers) { viewStorage.keyDown(with: down) }
+        if let up = event(.keyUp, flags: modifiers) { viewStorage.keyUp(with: up) }
+        if let release = event(.flagsChanged, flags: []) { viewStorage.flagsChanged(with: release) }
+        focus()
     }
 
     func pasteFiles(_ urls: [URL]) -> Bool {

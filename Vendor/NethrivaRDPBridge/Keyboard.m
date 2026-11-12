@@ -174,18 +174,18 @@ enum APPLE_KEYBOARD_TYPE mac_detect_keyboard_type(void)
 	IOReturn tIOReturn = IOHIDManagerOpen(tIOHIDManagerRef, kIOHIDOptionsTypeNone);
 
 	if (noErr != tIOReturn)
-		return type;
+		goto cleanup;
 
 	deviceCFSetRef = IOHIDManagerCopyDevices(tIOHIDManagerRef);
 
 	if (!deviceCFSetRef)
-		return type;
+		goto cleanup;
 
 	CFIndex deviceIndex, deviceCount = CFSetGetCount(deviceCFSetRef);
 	tIOHIDDeviceRefs = malloc(sizeof(IOHIDDeviceRef) * deviceCount);
 
 	if (!tIOHIDDeviceRefs)
-		return type;
+		goto cleanup;
 
 	CFSetGetValues(deviceCFSetRef, (const void **)tIOHIDDeviceRefs);
 	CFRelease(deviceCFSetRef);
@@ -227,6 +227,7 @@ enum APPLE_KEYBOARD_TYPE mac_detect_keyboard_type(void)
 		}
 	}
 
+cleanup:
 	free(tIOHIDDeviceRefs);
 
 	if (deviceCFSetRef)
@@ -236,7 +237,11 @@ enum APPLE_KEYBOARD_TYPE mac_detect_keyboard_type(void)
 	}
 
 	if (tIOHIDManagerRef)
+	{
+		if (noErr == tIOReturn)
+			IOHIDManagerClose(tIOHIDManagerRef, kIOHIDOptionsTypeNone);
 		CFRelease(tIOHIDManagerRef);
+	}
 
 	return type;
 }

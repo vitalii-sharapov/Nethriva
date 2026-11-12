@@ -233,9 +233,12 @@
         <a href="#welcome">Welcome</a>
         <a href="#quick-start">Quick start</a>
         <a href="#workspace">Workspace</a>
+        <a href="#workflow-tools">Split sessions and SSH tools</a>
+        <a href="#library-tools">Terminal and library tools</a>
         <a href="#connections">Connections and groups</a>
         <a href="#credential-profiles">Credential profiles</a>
         <a href="#settings">Settings and privacy</a>
+        <a href="#sharing-privacy">Shared libraries, vaults and lock</a>
         <div class="section-label">Sessions</div>
         <a href="#local-terminal">Local Terminal</a>
         <a href="#ssh">SSH</a>
@@ -245,11 +248,15 @@
         <a href="#sftp">SFTP browser</a>
         <a href="#rdp">RDP</a>
         <a href="#rdp-transfer">RDP clipboard and files</a>
+        <a href="#virtualization">Virtualization hosts</a>
+        <a href="#advanced-connections">X11, keyboard &amp; updates</a>
+        <a href="#vm-consoles">VM consoles and controls</a>
         <div class="section-label">Reference</div>
         <a href="#shortcuts">Keyboard and pointer</a>
         <a href="#security">Security and privacy</a>
         <a href="#troubleshooting">Troubleshooting</a>
         <a href="#limitations">Current limitations</a>
+        <a href="#connection-check">Connection Check and recovery</a>
         <a href="#about">About this help</a>
       </nav>
     </aside>
@@ -257,16 +264,17 @@
     <main>
       <header class="hero" id="welcome">
         <h1>Nethriva Help</h1>
-        <p>A complete offline guide to organizing connections, using local, SSH, Telnet, and Serial terminals, transferring files, and working with embedded Windows desktops.</p>
-        <span class="version">Nethriva 0.12.1 · Help edition</span>
+        <p>A complete offline guide to organizing connections, using local, SSH, Telnet, and Serial terminals, transferring files, and working with embedded Windows desktops and VM consoles.</p>
+        <span class="version">Nethriva 0.13.0 (30) · Preview help</span>
       </header>
 
       <section id="quick-start">
         <a class="top-link" href="#top">Back to top</a>
         <h2>Quick start</h2>
+        <div class="callout"><strong>0.13.0 preview, build 30.</strong> Apple-silicon download, macOS 14 or newer. Locally signed and not Apple-notarized; review the GitHub release notes and back up your connection library before testing. Existing saved settings remain in place. Other chips, older OS releases and individual server/device integrations still need acceptance testing.</div>
         <ol>
           <li>Choose <strong>Add → New Connection</strong> in the sidebar.</li>
-          <li>Select <strong>SSH</strong>, <strong>Telnet</strong>, <strong>Serial</strong>, or <strong>RDP</strong>. Network connections use a host, TCP port, and optional credentials; Serial uses a local device path and line settings.</li>
+          <li>Select <strong>SSH</strong>, <strong>Telnet</strong>, <strong>Serial</strong>, <strong>RDP</strong>, <strong>Virtualization Host</strong>, <strong>VNC Console</strong>, or <strong>SPICE Console</strong>. Network connections use a host and port; Serial uses a local device path and line settings.</li>
           <li>Choose a group and favorite status, configure any protocol-specific options, and click <strong>Add</strong>.</li>
           <li>Double-click the connection, select it and press <kbd>⌘O</kbd>, or choose <strong>Open</strong> from its context menu.</li>
           <li>For SSH file management, use the tree beside the terminal or choose <strong>Open SFTP Browser</strong>.</li>
@@ -286,6 +294,40 @@
         <p>Closing a tab ends or releases the session it owns. Deleting a saved connection closes every tab associated with that connection. Multiple tabs may be opened from the same saved connection.</p>
       </section>
 
+      <section id="workflow-tools">
+        <h2>Split sessions and SSH workflow tools</h2>
+        <h3>Split panes and detached windows</h3>
+        <p>Right-click a tab for <strong>Show beside current session</strong>, <strong>Stack below current session</strong>, or <strong>Detach to Window</strong>. Drag the wide divider handles to adjust adjacent pane sizes; double-click a handle or choose <strong>Equal Pane Sizes</strong> to balance the group. The existing live surfaces stay connected.</p>
+        <p>For three or four SSH terminals, open another SSH session, right-click its tab and choose <strong>Add to SSH Split</strong>. New RDP, SFTP, local terminal and other sessions open alone. New SSH sessions also open alone until you add them. Select any split member's tab to return to that group with its sizes preserved. <strong>Remove from Split</strong> takes one session out without closing it; <strong>Single Pane</strong> on a member dissolves the group. Closing or detaching one member preserves the remaining panes. Split layouts are kept for the current app session.</p>
+        <p>Closing a detached window returns it to the workspace as a single session; its tab close button ends the session. Clicking a pane selects its keyboard target. SSH file trees hide in split mode; use a dedicated SFTP tab beside a terminal.</p>
+        <h3>Quick Connect</h3>
+        <p>Press <strong>Command-K</strong> to search connection names, host/IP, port and groups, cached VM names/node/host names, or workflow actions. Arrow keys and Return open the selected result. VM results require an inventory loaded during this run; there is no background host scanning or automatic power action. Endpoint visibility follows privacy settings.</p>
+        <h3>SSH Tunnels and jump chains</h3>
+        <p>Choose <strong>File → SSH Tunnels</strong>, save a local, remote or SOCKS definition, authenticate its SSH tab, then explicitly Start/Stop it. Listeners use loopback ports 1024–65535; server forwarding and GatewayPorts policies still apply. A successful start is not a destination health check. Active tunnels keep their SSH master alive after its last terminal closes; quitting closes it. Lost/interrupted acknowledgements show uncertain state; explicitly Stop before retrying. No forwards restart automatically.</p>
+        <p>App-owned SSH masters suppress forwarding rules inherited from SSH config; define them in this manager. Keys, agent, aliases, trust and jump settings still apply. Use <strong>Configure Jump Chain</strong> in an SSH editor to add/reorder up to eight hops. Saved hosts add addresses, not their passwords/key settings. Per-hop authentication follows SSH config/agent; no agent forwarding is silently enabled.</p>
+        <h3>Remote text editing</h3>
+        <p>Right-click a regular file in SSH/SFTP and select <strong>Edit Remote File</strong>. UTF-8 files up to 2 MiB are supported; binary/NUL data, links and special files are refused. <strong>Save</strong> (Command-S) re-reads and hashes remote content and stops on a conflict. Reload with confirmation or explicitly choose <strong>Overwrite Changed File</strong>. Safe replacement needs the server's POSIX rename extension; the old file is never deleted first. Ordinary permissions are preserved, not ownership/ACLs. A concurrent writer can still change content during the final check-to-save interval. There is no autosave or automatic retry; close/quit protects unsaved edits.</p>
+        <h3>Command Snippets</h3>
+        <p>Choose <strong>File → Command Snippets</strong> for named/grouped templates. Use unquoted <code>{{parameter}}</code> placeholders, fill their values, preview, and choose an open Local/SSH/Telnet/Serial terminal. Shell quoting and execution confirmation default on. <strong>Insert</strong> sends a single line without Return; <strong>Run</strong> appends Return. Newlines/control characters refuse silent insertion and require execution confirmation. Device CLIs may need quoting disabled; review the preview carefully. Closed or detected credential-waiting targets refuse insertion; this is not a reliable shell-state detector.</p>
+        <p>Never store passwords/tokens in snippets. Snippet/tunnel definitions persist locally in the active data profile and are not yet included in connection-library exports. File contents, commands and credentials are not automatically added to diagnostics. All workflow changes require deliberate user actions and are not replayed after reconnect.</p>
+      </section>
+      <section id="library-tools">
+        <h2>Terminal and library tools</h2>
+        <h3>Multi-Session Command</h3>
+        <p><strong>File → Multi-Session Command</strong> selects individual Local/SSH/Telnet/Serial tabs, none automatically. Enter one line, inspect each real prompt, acknowledge the recipients, then review the exact command/numbered list and choose <strong>Execute Once</strong>. Closed/restarted/disconnected or detected authentication targets fail preflight; control characters are refused. Input-channel acceptance is not proof of execution. This is not keyboard broadcasting, reliable shell-state detection or an atomic host transaction. No automatic resend occurs. Never put credentials in commands.</p>
+        <h3>Terminal profiles and Find Output</h3>
+        <p><strong>File → Terminal Profiles &amp; Templates</strong> manages fonts (9–32 pt), themes, cursors and 100–10,000 scrollback lines. Choose a profile in a client editor or set an app default; appearance applies when a terminal is created/restarted. <strong>Find Output</strong> searches a read-only in-memory scrollback snapshot (up to 2 MiB/500 result lines). Refresh includes new output; full-screen programs can overwrite it. This is not persistent shell-command history.</p>
+        <h3>Record Output</h3>
+        <p>Recording is always off until explicitly confirmed per terminal. A red <strong>Recording output</strong> indicator and <strong>Stop Recording</strong> control remain visible. Only future received output is captured, not keyboard input directly, but a shell/device can echo commands or secrets. Filtering removes terminal sequences and omits sensitive-label/oversized lines; <strong>it cannot guarantee secrecy</strong>. Avoid authentication/credential-printing commands while recording and review before sharing. Files use random names and private 0600/0700 permissions, a separate Debug/Release profile folder, off-UI-thread bounded writes and an 8 MiB per-log limit. Incomplete final lines are omitted. Stop, disconnect, restart, close and quit end recording; it never resumes automatically.</p>
+        <p>Retention defaults to seven days, configurable from 1–90 in Terminal Profiles. Starting recording or <strong>Settings → Remove Expired Logs</strong> permanently removes expired app-owned regular logs, not active logs/symlinks/unrelated files. <strong>Show Private Log Folder</strong> opens the local folder. Logs are not encrypted by Nethriva and are never part of diagnostics, connection archives or release bundles.</p>
+        <h3>Templates, inherited group defaults and bulk edits</h3>
+        <p>Detected credential prompts stop output recording and require explicit restart afterward; unknown prompts are not guaranteed to be detected. Log warnings remain visible in terminal controls. Expired-log cleanup asks for confirmation in Settings and is disclosed when recording starts.</p>
+        <p>The tools window manages named protocol templates and group defaults for credential-profile references, ports, SSH jump/keepalive, RDP gateway/scale and terminal profiles. Templates have no passwords/endpoints: <strong>Apply Template</strong> confirms copying applicable values into an editor draft, still requiring Save. Existing clients do not inherit automatically. Check individual <strong>Inherit Selected Fields from Group</strong> fields to use the nearest subgroup or parent defaults; unchecked fields retain individual values. Missing rules fall back to the client. Changed defaults apply to new tabs; existing tabs/reconnects keep snapshots. Rename/move follows the subtree; removing a group materializes clients’ settings before moving them to Ungrouped.</p>
+        <p>Command/Shift-select sidebar clients, right-click and choose <strong>Bulk Edit Selected</strong>, or use the File menu. Check fields, fill values, inspect before/after previews, then apply one metadata update. Unsupported protocols/unchecked fields stay unchanged. Blank ports/profile selections are skipped; blank jump/gateway clears them. Changed fields stop inheriting. Individual passwords are not read/changed/deleted, and live sessions stay unchanged. Templates/group rules remain local; exports materialize effective values and embed appearance rather than exporting those catalogs.</p>
+        <h3>Migration imports</h3>
+        <p><strong>File → Import Other Formats</strong> previews OpenSSH config, RDP files, CSV and unencrypted attribute-based connection-tree XML. UTF-8/BOM UTF-16, 4 MiB and 10,000-record bounds apply. No hosts are contacted or configuration code executed. Password fields/blobs are ignored; existing records are never overwritten. Same-name/endpoint duplicates are unchecked initially; explicitly selecting one adds a separate client. Confirm before saving, including empty XML groups.</p>
+        <p>SSH imports explicit Host entries with HostName/User/Port/IdentityFile/ProxyJump/ForwardAgent/Compression/ServerAliveInterval; wildcard/Match/Include/command/forwarding directives are not evaluated. RDP imports endpoint/account/domain/gateway and selected display/clipboard/reconnect options, never automatic programs/authentication exceptions/device redirects; certificate checking defaults strict. CSV requires <code>protocol,host</code>, with optional <code>name,port,username,group,domain,gateway,favorite</code>; protocols are ssh/telnet/rdp/vnc. XML accepts Connections/ConnectionTree roots, nested Container Nodes/Groups and Connection Nodes using Name/Protocol/Hostname or Host/Port/Username/Domain. Passwords/inheritance flags/unsupported properties are ignored, and fully encrypted files, DTDs/entities/control-character fields are rejected. These are documented subsets, not complete third-party evaluators; review every preview.</p>
+      </section>
       <section id="connections">
         <a class="top-link" href="#top">Back to top</a>
         <h2>Connections and groups</h2>
@@ -350,9 +392,30 @@
         <ul>
           <li><strong>Sidebar:</strong> show or hide host addresses and usernames below connection names.</li>
           <li><strong>Sessions:</strong> show or hide host addresses and usernames in SSH, Telnet, RDP, and SFTP headers.</li>
+          <li><strong>Recovery:</strong> optionally reconnect sessions interrupted by sleep or network/interface changes. Off by default. Explicitly disconnected tabs stay disconnected; terminal commands, VM operations, and interrupted transfers are never replayed automatically.</li>
           <li>Username display is off by default in both locations. Changes take effect immediately and are saved for the current development or release profile.</li>
         </ul>
         <p>These controls affect labels created by Nethriva. A connection name containing a username, or text displayed by a remote system such as a shell prompt, remains visible until changed at its source.</p>
+      </section>
+
+      <section id="sharing-privacy">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Shared libraries, external credentials and privacy lock</h2>
+        <h3>Share network connection structure</h3>
+        <p>Open <strong>File → Shared Connection Libraries…</strong>, select network clients and review <strong>Save New Shared File…</strong>. The <code>.nethriva-shared</code> format includes only names, hosts, ports, protocols, groups and VM platform. Usernames, passwords, profile/vault references, SSH keys/jumps, commands and private redirection/trust settings are excluded. Selected clients’ parent groups are included; including all empty groups is a separate opt-in. Local Terminal/Serial are not shared. Files still reveal infrastructure; share only with intended recipients.</p>
+        <p><strong>Link Shared File…</strong> creates independent local client IDs without credentials or inherited rules. Add your personal credentials afterwards. <strong>Refresh &amp; Review</strong> merges against a baseline: personal-only edits are kept, shared-only edits apply, and conflicting fields keep personal values unless you choose the shared value. Changed destinations require approval and create fresh credential-free clients while keeping former clients independent. Shared deletions keep local clients; personal deletions are not resurrected while linked. Existing tabs are unchanged.</p>
+        <p><strong>Save New Revision…</strong> reviews current linked clients plus any additional selections and saves a new file with the same shared identities. Teammates link the new revision to review its changes. Existing files are never overwritten, and nothing uploads or synchronizes automatically. <strong>Unlink</strong> removes tracking only. These files differ from ordinary backup/encrypted archives and never contain credentials.</p>
+        <h3>Use a vault without copying its password into Keychain</h3>
+        <p>Save a profile under <strong>Manage Credential Profiles…</strong>, then enable <strong>External credential provider</strong>. Link clients through their Credentials picker. New sessions asynchronously request the referenced password; existing sessions retain their current copy.</p>
+        <ul>
+          <li><strong>1Password CLI:</strong> install the official <code>op</code> in an offered standard location, enable desktop-app integration and enter <code>op://vault/item/password</code>. 1Password handles authorization; Nethriva does not collect its master password or service-account token. Retrieval uses a fixed command and private bounded stdout pipe, not a shell or credential environment.</li>
+          <li><strong>Vault KV v2:</strong> enter an HTTPS server, <code>mount/path</code>, password field and optional namespace. Save the choice, then enter a short-lived token in the secure field and choose <strong>Authorize for This App Session</strong>. Only the selected KV v2 field is returned. System TLS validation is required; redirects are rejected. Tokens remain in memory and are forgotten on lock/profile change/quit or explicit Forget Authorization. No OIDC login, KV v1 or token renewal is provided.</li>
+        </ul>
+        <p><strong>Test Read (No Password Display)</strong> verifies retrieval without displaying or saving the value. External selection overrides an old Keychain password without deleting it. Provider passwords, references and tokens are excluded from all exports. Configure providers separately on each Mac. Bitwarden/other providers are not implemented here; your vault setup and permissions still determine success.</p>
+        <h3>Lock Nethriva</h3>
+        <p>Choose <strong>File → Lock &amp; Disconnect Sessions</strong> or press <kbd>⌘⇧L</kbd>. All app windows and their accessibility content are concealed, live tabs/recording/tunnels are closed, editor operations are cancelled while unsaved buffers remain hidden, and temporary VM/vault authorization is cleared. Unlock with <strong>Touch ID or your Mac login password</strong>, not a remote password. Cancelled or failed authentication stays locked, including across app restart. Reopen clients explicitly after unlocking; no commands, transfers or VM actions are replayed.</p>
+        <p>Settings optionally locks on Mac sleep/screen lock or after 5/15/30/60 minutes without input in Nethriva. Automatic locking is off by default. Remote operations already accepted may continue on the host; verify before retrying. Unlock waits for owned SSH shutdown. If unsaved editor buffers block quitting, unlock to answer the discard confirmation.</p>
+        <p>This protects the app UI and credential boundary, not files on disk, other same-user processes or encrypted memory. Existing logs/backups and the system clipboard are not erased, and external vault tokens are not revoked at their issuer. Use macOS screen locking/FileVault and vault controls too.</p>
       </section>
 
       <section id="local-terminal">
@@ -444,6 +507,9 @@
         <h2>SFTP browser</h2>
         <p>Choose <strong>Open SFTP Browser</strong> on an SSH connection or press <kbd>⌘⇧U</kbd> while it is selected. SFTP opens in a separate tab and inherits the connection's host, port, username, authentication mode, key, jump host, agent, compression, and saved password.</p>
         <h3>File operations</h3>
+        <p>The SSH tree and SFTP tab include a <strong>Transfers</strong> queue with per-current-file byte progress/speed, Cancel, Retry, and conflict resolution. Existing destinations are protected by default: choose Skip, automatic Rename, or explicit Overwrite/merge. Retry restarts a job; it is not byte-range resume. Transfers continue while browsing or switching tabs, but closing the tab cancels them.</p>
+        <p>File operations use structured SFTP v3 packets over macOS OpenSSH, not textual commands or parsed directory output. Listings reuse a persistent subsystem and transfers use a separate channel. Only regular files and folders are transferred; symbolic links and special files are not followed. Regular files are staged before publication. Safe replacement of an existing remote file needs the OpenSSH POSIX-rename extension; otherwise choose Rename.</p>
+        <div class="callout warning">Folder merges are not atomic. Completed children and new folders may remain after interruption. A lost connection may also leave a hidden remote <code>.nethriva-…partial</code> file when cleanup is impossible. Inspect/remove that specific partial file manually if needed; the previous regular destination is not truncated by a failed transfer.</div>
         <ul>
           <li>Navigate to parent and home folders, double-click folders, and refresh listings.</li>
           <li>View names, sizes, modification values, permissions, links, and file-type icons.</li>
@@ -533,7 +599,7 @@
           <li>Saved passwords are device-local generic-password items in macOS Keychain, keyed by connection UUID and available only while this Mac is unlocked.</li>
           <li>Password values are not stored in the connection record and are redacted from application-visible RDP argument logs.</li>
           <li>SSH host identity is protected by the current user's OpenSSH <code>known_hosts</code> checks.</li>
-          <li>SFTP passwords are delivered to the helper through a private pipe, not process arguments or environment variables, and unsafe control characters are rejected from commands.</li>
+          <li>SFTP authentication passwords enter a private pipe, never arguments/environment variables. File requests are binary packets; unsafe path components/control characters and unbounded server responses are rejected.</li>
           <li>Telnet provides no encryption or host-identity verification and must be treated as a legacy, trusted-network-only protocol.</li>
           <li>Serial uses a local device and does not encrypt bytes sent over the cable.</li>
           <li>RDP credentials are supplied to the embedded native client without appearing in a separate RDP process list.</li>
@@ -549,6 +615,10 @@
       <section id="troubleshooting">
         <a class="top-link" href="#top">Back to top</a>
         <h2>Troubleshooting</h2>
+        <h3>SSH reports a Unix socket path is too long</h3>
+        <p>Build 30 reserves OpenSSH’s temporary socket suffix within macOS’s limit. Rebuild/relaunch the updated app, then reopen the failed SSH tab. Your saved connection/password can stay unchanged; do not delete socket directories or change the server to work around this app bug.</p>
+        <h3>RDP runtime cannot load in an Xcode build</h3>
+        <p>Use the Nethriva scheme’s Development Run configuration for locally signed native libraries. Strict Release archives require compatible production signing identities. Error details are selectable and scrollable with readable light/dark colors. This local loader error occurs before an RDP login and does not establish a server-password or certificate failure.</p>
         <details><summary>macOS keeps asking for my login keychain password</summary><div>This macOS permission dialog asks for the <strong>login keychain password</strong>, not the remote server password. Nethriva reads an existing saved credential without rewriting it, and its connection editor checks only whether a password exists. If the password is rejected, open Keychain Access and check whether the <strong>login</strong> keychain unlocks with your current Mac login password or a previous one. Do not reset the keychain merely to dismiss a prompt; a reset can remove saved passwords. See <a href="https://support.apple.com/guide/keychain-access/kyca2429/mac">Apple's keychain-password guidance</a>.</div></details>
         <details open><summary>I cannot type or paste into SSH</summary><div>Click inside the terminal first. Password input is invisible, so type or paste it and press Return even though no characters appear. Command-V pastes; secondary-click also pastes into terminal sessions.</div></details>
         <details><summary>Telnet does not connect or accept keyboard input</summary><div>Confirm the device exposes Telnet on the configured port and that no firewall blocks it, then click inside the terminal before typing. Use Telnet only on a trusted management network because its traffic is unencrypted.</div></details>
@@ -565,6 +635,13 @@
         <details><summary>The help page or package resources are missing</summary><div>In Xcode choose Product → Clean Build Folder, confirm the Nethriva scheme and My Mac destination, and build again. The help file must appear in the app target's Copy Bundle Resources phase.</div></details>
       </section>
 
+      <section id="connection-check">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Connection Check and recovery</h2>
+        <p>Choose <strong>File → Connection Check…</strong>, the connection context menu, or its session toolbar button. DNS and TCP probes do not log in. Applicable HTTPS API checks use strict system trust and never follow redirects or bypass self-signed-certificate failures. A TCP success does not prove RDP, console identity, or authentication works.</p>
+        <p><strong>Check SSH/SFTP Login</strong> is optional and explicitly uses the selected credential for a read-only home listing. An existing authenticated OpenSSH master may be reused, so success does not necessarily validate a newly changed password. Copy/export the redacted report to share only fixed stage results, not endpoints, usernames, paths, credentials, certificates, or tickets.</p>
+        <p>After interruption, use Reconnect/Refresh or opt into automatic session recovery in Settings. Interrupted transfers require manual Retry. RDP and VM consoles offer <strong>Fit Screen</strong>; local terminals offer Disconnect/Restart. Background tabs do not request keyboard focus on every redraw.</p>
+      </section>
       <section id="limitations">
         <a class="top-link" href="#top">Back to top</a>
         <h2>Current limitations</h2>
@@ -582,13 +659,82 @@
         </ul>
       </section>
 
+      <section id="virtualization">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>Virtualization hosts</h2>
+        <p>Add a <strong>Virtualization Host</strong>, choose its platform, and enter a management hostname/IP (not a URL), port, and host credentials or shared profile. Open it to load the searchable VM inventory. Select a running VM and click <strong>Open Console</strong>, or double-click its name. A console opens in its own tab without needing a guest IP.</p>
+        <table>
+          <thead><tr><th>Platform</th><th>Required setup</th><th>Console</th></tr></thead>
+          <tbody>
+            <tr><td>Proxmox VE</td><td>HTTPS API, usually 8006; realm login such as user@pam; appropriate VM permissions</td><td>VNC/WSS; containers use the host web console</td></tr>
+            <tr><td>VMware ESXi/vCenter</td><td>HTTPS SOAP /sdk, usually 443; API login and ConsoleInteract privilege; reachable ESXi ticket endpoint</td><td>One-time WebMKS ticket over WSS with bundled noVNC; no VMRC or second web login</td></tr>
+            <tr><td>QEMU/libvirt</td><td>SSH, host virsh, trusted key, authorized qemu:///system or qemu:///session, configured graphics</td><td>VNC/SPICE through an owned SSH forward</td></tr>
+            <tr><td>Microsoft Hyper-V</td><td>Windows OpenSSH, Hyper-V PowerShell permissions, VMConnect firewall access</td><td>Embedded RDP VMConnect on port 2179</td></tr>
+            <tr><td>XCP-ng/XenServer</td><td>Xen Orchestra HTTPS/WSS account with VM and token permissions; not the bare hypervisor endpoint</td><td>Xen Orchestra VNC proxy</td></tr>
+            <tr><td>Nutanix AHV</td><td>Prism Central, usually 9440; v3 inventory, v4 actions, newer console-token API with accepted cookie/bearer authentication</td><td>Console-token WSS; experimental pending host validation</td></tr>
+          </tbody>
+        </table>
+        <p>For QEMU/libvirt and Hyper-V, use <strong>Host SSH</strong> first to verify an unfamiliar SSH fingerprint. A key/agent or authenticated master is needed for noninteractive SSH console forwarding. For HTTPS hosts, certificate verification is strict by default. Trust on First Use requires fingerprint approval; changed fingerprints are rejected.</p>
+        <p><strong>Credentials…</strong> allows a temporary host login. The save-to-Keychain checkbox is off by default; saving into a shared profile changes all linked connections. Temporary credentials last only while the host's tabs remain open. Console passwords may differ from management passwords.</p>
+        <h3>Power and guest-tools media</h3>
+        <p>Select a VM and use <strong>VM Actions</strong> for start, shutdown/reboot, suspend/resume where supported, reset, force-off, and ISO/tools media operations. Disruptive actions ask for confirmation. Host permissions and guest cooperation determine success; inspect the host task log for queued requests.</p>
+        <ul>
+          <li>VMware Tools and Nutanix Guest Tools actions ask the host to insert its installer media. Installation happens inside the guest.</li>
+          <li>QEMU/libvirt, Proxmox, Hyper-V, and Xen Orchestra can use an administrator-configured guest-tools ISO/VDI. There is no universal installer for all guests. Modern Windows Hyper-V integration services usually come through Windows Update.</li>
+          <li>ISO references must already exist on the host: a Proxmox volume ID, VMware datastore path, libvirt absolute path, Hyper-V Windows path, Xen Orchestra VDI UUID, or Prism image UUID.</li>
+          <li>An existing CD/DVD drive is required where the host uses one. Nethriva does not overwrite another virtual disk, upload a local ISO automatically, or install guest software itself.</li>
+        </ul>
+        <div class="callout warning"><strong>New integration status:</strong> Automated checks do not certify every hypervisor or identity provider. Live host testing is still required. Test force-off, reset and snapshots only on disposable VMs. The new registered-client VMware MFA flow requires administrator setup; older Nutanix console APIs remain unsupported.</div>
+        <h3>Details, snapshots and task progress</h3>
+        <p>Select a VM and use <strong>Details</strong> for available host, guest OS, CPU/RAM, tools and IP information. Missing agent/API data reads Not reported. Guest IP <strong>SSH</strong>/<strong>RDP</strong> buttons open separate unsaved connections with no copied host credentials.</p>
+        <p>The panel offers confirmed <strong>Create Snapshot</strong>, <strong>Revert</strong> and <strong>Delete</strong> for VMware, Proxmox, Hyper-V and stopped libvirt domains. VMware/Proxmox snapshots exclude guest memory and do not request application quiescing; Hyper-V uses its configured checkpoint policy. Snapshots are not backups. Reversion can discard changes and alter power state; deletion removes a recovery point. No forced or recursive-delete flags are used. Xen Orchestra/Nutanix snapshot controls are unavailable in these adapters.</p>
+        <p>Host task percentages appear when VMware reports them; other supported tasks show indeterminate progress. <strong>Stop Monitoring</strong> cancels local observation, not an already accepted host operation. Refresh the host to check its state; no request is replayed.</p>
+        <h3>Interactive vCenter federation</h3>
+        <p>Enable <strong>Interactive federated sign-in</strong> in the VMware connection editor. Your administrator must register a public/native OAuth authorization-code client with S256 PKCE and redirect <code>nethriva-auth://oauth/callback</code>, then supply approved HTTPS authorization/token URLs, client ID, scopes and optional resource. Choose the exchange token type required by that integration. This is not automatic discovery or a password-grant workaround.</p>
+        <p>Use <strong>Federated Sign In</strong> in the inventory tab. The system browser handles MFA; vCenter 7.0.2+ exchanges the token for a SAML bearer assertion used with SOAP LoginByToken. System-trusted HTTPS is mandatory. No client secret, MFA bypass, token persistence or automatic refresh is provided. Assertions stay in connection-scoped memory for at most five minutes and are cleared on lock/quit/last-related-tab close/deletion. Holder-of-key tokens are unsupported. Actual provider acceptance remains pending.</p>
+        <p>VMware console opening uses API-authorized WebMKS tickets, not the vCenter website. If inventory loads with your API credentials, no additional ADFS browser sign-in is needed for the console. The Mac must reach the returned ESXi host and port. Each reconnect obtains a fresh ticket; tickets cannot be reused. The ESXi certificate must match the API-issued identity, or pass system validation when no identity is supplied. Management cookies and HTTP credentials are never forwarded to the console host. Verify the API certificate carefully; do not disable federation or MFA to use this client.</p>
+        <p>VMware ticket sockets use native TLS/WebSocket networking with TLS 1.2 or newer, without an app-wide transport-security exception. Console failures distinguish a ticket/certificate mismatch, missing identity with system-trust failure, TLS negotiation failure, or a later connection failure. Report only this message, its numeric TLS/network code, and host software versions; never share ticket URLs or credentials. Redirects and extra HTTP logins are not followed. Resolve certificate mismatches in the host/vCenter rather than disabling verification. Tickets that omit the optional hash-algorithm field are supported when their SHA-1 or SHA-256 digest is valid.</p>
+        <p>An API-supplied WebSocket URL takes precedence over separate host/port metadata, while WSS and certificate verification remain required. Standalone ESXi may omit an already-known endpoint; vCenter's address is never substituted for an unknown ESXi target. Invalid-ticket errors name a fixed field label. Report that label and server versions only, not ticket contents or raw SOAP responses.</p>
+        <p>If the console reports Connected but is blank, rebuild older 0.13.0 development sources: an unused SPICE container previously pushed the VNC/VMware display below the visible tab. Only the selected renderer now occupies that area. If a current build still shows black, compare the guest in the host's console and check guest screen blanking; do not restart or reconfigure the VM solely to troubleshoot this layout issue.</p>
+      </section>
+
+      <section id="vm-consoles">
+        <a class="top-link" href="#top">Back to top</a>
+        <h2>VM consoles and controls</h2>
+        <p>Use a direct <strong>VNC Console</strong> or <strong>SPICE Console</strong> connection for a QEMU console or compatible exposed endpoint without a supported inventory service. Specify the actual port (defaults are 5900 for VNC and 5930 for SPICE). Choose Direct TCP, TLS-wrapped TCP or Secure WebSocket; a WebSocket path looks like <code>/websockify</code>, not a full URL.</p>
+        <div class="callout warning"><strong>Raw TCP consoles are not encrypted.</strong> Use a trusted isolated network or select a saved SSH connection for forwarding. The target address is interpreted on the SSH host. WSS validates the configured server certificate; native VNC/SPICE TLS ports are not the same as a WSS proxy.</div>
+        <p><strong>TLS-wrapped TCP</strong> requires a listener that encrypts the entire stream before VNC/SPICE negotiation, such as an approved TLS proxy—not a VeNCrypt-only listener. It requires TLS 1.2+, macOS system certificate trust and matching hostname, never Ignore/TOFU or plaintext fallback. Use the correct port configured by the server administrator.</p>
+        <table>
+          <thead><tr><th>Control</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td>Ctrl+Alt+Del</td><td>Sends the special key sequence in VNC, SPICE, VMware WebMKS, and RDP.</td></tr>
+            <tr><td>Fit Screen</td><td>Visible toolbar button for VNC, SPICE, and VMware consoles. Scales the whole display into the tab, preserving proportions, and keeps fitting after window/sidebar changes without changing guest resolution. Disable Fit to Screen Automatically under Display &amp; Input for actual size.</td></tr>
+            <tr><td>Resize Guest to Fit (When Supported)</td><td>Separate opt-in control under Display &amp; Input, off by default. Requests a new guest resolution only with server/guest support and outside view-only mode. Local Fit Screen works independently.</td></tr>
+            <tr><td>View Only</td><td>Blocks local keyboard and pointer input; special-key sending is disabled.</td></tr>
+            <tr><td>Release Keyboard / Full Screen</td><td>Returns focus to the app or toggles the app window's fullscreen state.</td></tr>
+            <tr><td>Share Text Clipboard / Send Clipboard</td><td>Clipboard sharing is off by default. Enable it, send Mac text, then paste inside the guest. SPICE clipboard requires guest support.</td></tr>
+          </tbody>
+        </table>
+        <p>VM console tabs do not provide RDP's Finder file/folder drops, printers, USB, microphone, or guaranteed audio. Use RDP or SSH/SFTP to the guest for those workflows. VMware WebMKS uses Nethriva's input and display controls; resizing the guest itself and clipboard availability still depend on server/guest support. Host cookies, generated tickets, and console passwords stay in memory; closing the tab stops its sockets and owned tunnel.</p>
+        <h3>If a console fails</h3>
+        <p>Check graphics configuration, host console permissions, SSH trust/master availability, console password, firewall, proxy WebSocket support, and guest agent. If only inventory works, console authentication or host API capability may differ. Nutanix WSS needs an accepted bearer token or session cookie; Basic credentials alone are not assumed sufficient. Share sanitized host/guest versions and symptoms when reporting issues, never passwords or console-ticket URLs.</p>
+      </section>
+
+      <section id="advanced-connections">
+        <h2>X11, keyboard navigation and updates</h2>
+        <p>In <strong>SSH Options → X11 Forwarding</strong>, choose Off (default), Untrusted (-X) or Trusted (-Y). Install/start XQuartz separately, then choose <strong>Detect XQuartz Display</strong>; a fresh install may need logout/login. The remote server needs X11 forwarding and xauth. Trusted mode lets remote apps interact with other X applications or monitor input; use only fully trusted hosts. No public X11 listener or xhost + is needed. X11 terminals use a dedicated non-multiplexed transport; SFTP disables X11 and may require separate authentication.</p>
+        <p><strong>Sessions</strong> menu: ⇧⌘[/⇧⌘] switches sessions, ⌘1–⌘9 selects numbered tabs and ⇧⌘W closes the current session; ⌘W keeps normal window behavior. Detached selection raises its existing window. In the focused sidebar, ↑/↓ selects, Shift+↑/↓ extends selection, ←/→ collapses/expands a group, Return opens/toggles, and typing begins search. Return in VM inventory opens a running guest. Enable macOS Keyboard Navigation to Tab through all controls. Return on a privacy shield starts Mac-authenticated unlocking.</p>
+        <p><strong>Help → Check for Updates</strong> is optional/manual. Downloads require a publisher Ed25519 public key pinned in the build, a signed newer-release manifest and exact ZIP checksum/size. Current source has no publisher key, so verified downloads are disabled; Official Releases remains available. Installation is manual; no Gatekeeper/quarantine bypass occurs. A locally signed, non-notarized app may need <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> after reviewing its source and checksum.</p>
+        <p>The application core cross-builds for arm64/Intel, but this repository still includes only arm64 FreeRDP. Universal packaging refuses a missing matching Intel runtime; no Intel RDP release or full VoiceOver certification is implied.</p>
+      </section>
+
       <section id="about">
         <a class="top-link" href="#top">Back to top</a>
         <h2>About this help</h2>
         <p>This manual is bundled with Nethriva and works without an internet connection. Open it from the toolbar's question-mark button, choose <strong>Help → Nethriva Help</strong>, or press <kbd>⌘?</kbd>.</p>
         <p>Use the search field to highlight matching terms. Repeated searches start from the beginning of the manual and show every match.</p>
         <p>Nethriva is free and open-source software. If it saves you time, you can optionally leave a <a href="https://ko-fi.com/vsharapov">one-time tip through Ko-fi</a>. The Help menu provides the same link.</p>
-        <p class="muted">Manual version 0.12.1 · Covers local terminal, SSH, Telnet, Serial, remote file tree, SFTP, embedded RDP, connection import/export, credential profiles, security, and troubleshooting.</p>
+        <p class="muted">Manual version 0.13.0 · Covers terminals, files, embedded RDP, virtualization hosts, VNC/SPICE consoles, power/media controls, connection archives, credential profiles, security, and troubleshooting.</p>
       </section>
 
       <footer>Nethriva Help · Offline documentation bundled with the application</footer>

@@ -5,6 +5,7 @@ struct ConnectionEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var library: LibraryTools
 
     private let connection: RemoteConnection?
 
@@ -22,9 +23,11 @@ struct ConnectionEditorView: View {
     @State private var sshAuthentication: SSHAuthenticationMode
     @State private var sshIdentityFile: String
     @State private var sshJumpHost: String
+    @State private var showsJumpHosts = false
     @State private var sshForwardAgent: Bool
     @State private var sshCompression: Bool
     @State private var sshKeepAliveInterval: Int
+    @State private var sshX11: SSHX11Configuration
     @State private var serialBaudRate: Int
     @State private var serialDataBits: Int
     @State private var serialParity: SerialParity
@@ -48,6 +51,7 @@ struct ConnectionEditorView: View {
     @State private var rdpNetworkProfile: RDPNetworkProfile
     @State private var rdpGraphicsAcceleration: Bool
     @State private var rdpCertificatePolicy: RDPCertificatePolicy
+    @State private var rdpSecurityMode: RDPSecurityMode
     @State private var rdpAdminSession: Bool
     @State private var rdpAutoReconnect: Bool
     @State private var rdpReconnectRetries: Int
@@ -55,9 +59,17 @@ struct ConnectionEditorView: View {
     @State private var isShowingRDPDeviceOptions = false
     @State private var isShowingRDPSecurityOptions = false
     @State private var errorMessage: String?
+    @State private var vmConfiguration: VirtualizationConfiguration
+    @State private var terminalProfileID: UUID?
+    @State private var inheritedFields: Set<DefaultField>
+    @State private var selectedTemplate: ConnectionTemplate?
+    @State private var confirmsTemplate = false
 
     init(connection: RemoteConnection? = nil, initialGroup: String? = nil) {
         self.connection = connection
+        _terminalProfileID = State(initialValue: connection?.terminalProfileID)
+        _inheritedFields = State(initialValue: connection?.inheritedFields ?? [])
+        _vmConfiguration = State(initialValue: connection?.virtualization ?? VirtualizationConfiguration())
         _name = State(initialValue: connection?.name ?? "")
         _kind = State(initialValue: connection?.kind ?? .ssh)
         _host = State(initialValue: connection?.host ?? "")
@@ -72,6 +84,7 @@ struct ConnectionEditorView: View {
         _sshForwardAgent = State(initialValue: connection?.sshForwardAgent ?? false)
         _sshCompression = State(initialValue: connection?.sshCompression ?? false)
         _sshKeepAliveInterval = State(initialValue: connection?.effectiveSSHKeepAliveInterval ?? 30)
+        _sshX11 = State(initialValue: connection?.sshX11 ?? SSHX11Configuration())
         _serialBaudRate = State(initialValue: connection?.effectiveSerialBaudRate ?? 115_200)
         _serialDataBits = State(initialValue: connection?.effectiveSerialDataBits ?? 8)
         _serialParity = State(initialValue: connection?.effectiveSerialParity ?? .none)
@@ -89,7 +102,7 @@ struct ConnectionEditorView: View {
         _rdpGatewayHost = State(initialValue: connection?.rdpGatewayHost ?? "")
         _rdpGatewayUsername = State(initialValue: connection?.rdpGatewayUsername ?? "")
         _rdpScale = State(initialValue: connection?.effectiveRDPScale ?? 100)
-        _rdpClipboard = State(initialValue: connection?.effectiveRDPClipboard ?? true)
+        _rdpClipboard = State(initialValue: connection?.effectiveRDPClipboard ?? false)
         _rdpAudioMode = State(initialValue: connection?.effectiveRDPAudioMode ?? .local)
         _rdpMicrophone = State(initialValue: connection?.rdpMicrophone ?? false)
         _rdpRedirectHome = State(initialValue: connection?.rdpRedirectHome ?? false)
@@ -99,7 +112,8 @@ struct ConnectionEditorView: View {
         _rdpUSBDevices = State(initialValue: connection?.rdpUSBDevices ?? false)
         _rdpNetworkProfile = State(initialValue: connection?.effectiveRDPNetworkProfile ?? .automatic)
         _rdpGraphicsAcceleration = State(initialValue: connection?.effectiveRDPGraphicsAcceleration ?? true)
-        _rdpCertificatePolicy = State(initialValue: connection?.effectiveRDPCertificatePolicy ?? .trustOnFirstUse)
+        _rdpCertificatePolicy = State(initialValue: connection?.effectiveRDPCertificatePolicy ?? .systemValidation)
+        _rdpSecurityMode = State(initialValue: connection?.effectiveRDPSecurityMode ?? .nla)
         _rdpAdminSession = State(initialValue: connection?.rdpAdminSession ?? false)
         _rdpAutoReconnect = State(initialValue: connection?.effectiveRDPAutoReconnect ?? true)
         _rdpReconnectRetries = State(initialValue: connection?.effectiveRDPReconnectRetries ?? 10)
@@ -111,6 +125,25 @@ struct ConnectionEditorView: View {
                 Text(connection == nil ? "New Connection" : "Edit Connection")
                     .font(.title2.weight(.semibold))
 
+                Menu("Apply Template…") {
+                    ForEach(library.data.templates.filter { $0.kind == kind }) { template in
+                        Button(template.name) { selectedTemplate = template; confirmsTemplate = true }
+                    }
+                }.disabled(!library.data.templates.contains { $0.kind == kind })
+                if DefaultField.appearance.supports(kind) {
+                    Picker("Terminal Profile", selection: $terminalProfileID) {
+                        Text("App Default").tag(UUID?.none)
+                        ForEach(library.data.profiles) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                }
+                DisclosureGroup("Inherit Selected Fields from Group") {
+                    ForEach(DefaultField.allCases.filter { $0.supports(kind) }) { field in
+                        Toggle(field.label, isOn: Binding(get: { inheritedFields.contains(field) }, set: { if $0 { inheritedFields.insert(field) } else { inheritedFields.remove(field) } }))
+                    }
+                    Text("Checked fields use the nearest group’s defaults when a session opens. Unchecked fields use this connection’s values. A missing group value falls back to this connection. Existing clients do not inherit automatically.").font(.caption).foregroundStyle(.secondary)
+                    Button("Manage Templates & Group Defaults…") { appState.toolsGroupRequest = group; openWindow(id: "library-tools") }
+                }
+
                 TextField("Name", text: $name, prompt: Text("Production server"))
 
                 Picker("Protocol", selection: $kind) {
@@ -118,9 +151,13 @@ struct ConnectionEditorView: View {
                     Text("Telnet").tag(ConnectionKind.telnet)
                     Text("Serial").tag(ConnectionKind.serial)
                     Text("RDP").tag(ConnectionKind.rdp)
+                    Text("Virtualization Host").tag(ConnectionKind.virtualization)
+                    Text("VNC Console").tag(ConnectionKind.vnc)
+                    Text("SPICE Console").tag(ConnectionKind.spice)
                 }
                 .onChange(of: kind) { _, newValue in
                     port = newValue.defaultPort
+                    if newValue == .virtualization { port = vmConfiguration.platform.defaultPort }
                     if newValue == .serial {
                         host = availableSerialPorts.first ?? ""
                         credentialProfileID = nil
@@ -252,7 +289,72 @@ struct ConnectionEditorView: View {
 
                 Toggle("Favorite", isOn: $isFavorite)
 
-                if kind == .ssh {
+                if kind == .virtualization {
+                    Picker("Platform", selection: $vmConfiguration.platform) {
+                        ForEach(VirtualizationPlatform.allCases) { Text($0.displayName).tag($0) }
+                    }.onChange(of: vmConfiguration.platform) { _, platform in port = platform.defaultPort }
+                    if vmConfiguration.platform == .libvirt {
+                        Picker("libvirt Connection", selection: Binding(get: { vmConfiguration.effectiveLibvirtURI }, set: { vmConfiguration.libvirtURI = $0 })) {
+                            Text("System (qemu:///system)").tag("qemu:///system")
+                            Text("User session (qemu:///session)").tag("qemu:///session")
+                        }
+                    }
+                    if !vmConfiguration.platform.usesSSH { certificatePicker }
+                    TextField("Guest-tools ISO / VDI", text: optionalText(\.toolsImage), prompt: Text("Optional host-side media location"))
+                    Text(VirtualizationHostController.mediaHint(vmConfiguration.platform)).font(.caption).foregroundStyle(.secondary)
+                    Text("VM inventory, console access, and power controls use host permissions. Graceful shutdown requires guest support. ISO media must already exist on the host.").font(.caption).foregroundStyle(.secondary)
+                    if vmConfiguration.platform == .proxmox {
+                        Text("Use a realm-qualified account (user@pam or user@pve). For an API token, use user@realm!token as username and its secret as password; console ticket creation may require a password-authenticated account.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if vmConfiguration.platform == .hyperv {
+                        Text("Requires Windows OpenSSH, Hyper-V PowerShell permissions, and access to VMConnect on port 2179. Modern Windows integration services come through Windows Update.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if vmConfiguration.platform == .vmware {
+                        Toggle("Interactive federated sign-in (vCenter)", isOn: Binding(get: { vmConfiguration.federation != nil }, set: { vmConfiguration.federation = $0 ? VMFederationConfiguration() : nil }))
+                        if vmConfiguration.federation != nil {
+                            TextField("Authorization URL", text: federationText(\.authorizationURL))
+                            TextField("Token URL", text: federationText(\.tokenURL))
+                            TextField("Native Client ID", text: federationText(\.clientID))
+                            TextField("Scopes", text: federationText(\.scope))
+                            TextField("Resource (optional)", text: federationText(\.resource))
+                            Picker("Exchange Token Type", selection: Binding(get: { vmConfiguration.federation?.effectiveSubjectTokenType ?? "urn:ietf:params:oauth:token-type:jwt" }, set: { vmConfiguration.federation?.subjectTokenType = $0 })) {
+                                Text("JWT (typical federated vCenter)").tag("urn:ietf:params:oauth:token-type:jwt")
+                                Text("OAuth Access Token").tag("urn:ietf:params:oauth:token-type:access_token")
+                            }
+                            Text("An administrator must register a public/native OAuth client with S256 PKCE and redirect URI nethriva-auth://oauth/callback. Requires vCenter 7.0.2+ token exchange and a SAML bearer token. System-validated HTTPS is mandatory. MFA stays in the system browser; tokens remain in memory and expire within five minutes. Configure only trusted organization endpoints.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if vmConfiguration.platform == .nutanix {
+                        Toggle("Use bearer token instead of password", isOn: optionalBool(\.useBearerToken))
+                        Text("Prism Central inventory uses the v3 API; advanced actions use v4. Console token generation requires a host exposing the v4.2+ console API and a bearer token or authenticated session cookie for its WebSocket. Store the bearer token in the password field.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if kind == .vnc || kind == .spice {
+                    Picker("Transport", selection: Binding(get: { vmConfiguration.consoleTransport ?? .tcp }, set: {
+                        vmConfiguration.consoleTransport = $0
+                        if $0 != .tcp { vmConfiguration.tunnelConnectionID = nil }
+                    })) {
+                        ForEach(ConsoleTransport.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    if vmConfiguration.consoleTransport == .webSocket {
+                        TextField("WebSocket Path", text: optionalText(\.consolePath), prompt: Text("/websockify"))
+                        certificatePicker
+                    } else if vmConfiguration.consoleTransport == .tls {
+                        Text("Requires a TLS-wrapped VNC/SPICE listener (for example an administrator-configured TLS proxy), not a VeNCrypt-only listener. TLS 1.2+, macOS certificate trust and hostname verification are required. No insecure fallback is attempted.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Picker("SSH Tunnel", selection: $vmConfiguration.tunnelConnectionID) {
+                            Text("None — direct connection").tag(nil as UUID?)
+                            ForEach(appState.connections.filter { $0.kind == .ssh }) { Text($0.name).tag($0.id as UUID?) }
+                        }
+                        Text("Direct TCP is not encrypted. Prefer an SSH tunnel or secure WebSocket. For a tunnel, Host and Port identify the console from the SSH server's perspective; open that host's SSH tab first for authentication.").font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                if kind == .virtualization || kind == .vnc || kind == .spice {
+                    Toggle("Console view only", isOn: optionalBool(\.viewOnly))
+                    Toggle("Share console text clipboard", isOn: optionalBool(\.shareClipboard))
+                    Text("Clipboard and guest resizing depend on the console server and guest agent. Host web consoles use their own controls. Console tabs do not transfer files; use SSH/SFTP or RDP for that.").font(.caption).foregroundStyle(.secondary)
+                }
+                if usesSSH {
                     DisclosureGroup("SSH Options", isExpanded: $isShowingSSHOptions) {
                         Picker("Authentication", selection: $sshAuthentication) {
                             ForEach(SSHAuthenticationMode.allCases) { mode in
@@ -279,6 +381,8 @@ struct ConnectionEditorView: View {
                         }
 
                         TextField("Jump Host", text: $sshJumpHost, prompt: Text("user@bastion.example.com"))
+                        Button("Configure Jump Chain…") { showsJumpHosts = true }
+                            .sheet(isPresented: $showsJumpHosts) { JumpHostEditor(value: $sshJumpHost, connections: appState.connections.map { appState.resolvedConnection(for: $0) }) }
 
                         Toggle("Forward SSH agent", isOn: $sshForwardAgent)
                         Toggle("Enable compression", isOn: $sshCompression)
@@ -287,6 +391,23 @@ struct ConnectionEditorView: View {
                             Text(sshKeepAliveInterval == 0
                                 ? "Keep alive: Off"
                                 : "Keep alive: \(sshKeepAliveInterval) seconds")
+                        }
+                        if kind == .ssh {
+                        Picker("X11 Forwarding", selection: $sshX11.mode) {
+                            ForEach(SSHX11Mode.allCases) { Text($0.title).tag($0) }
+                        }
+                        if sshX11.mode != .off {
+                            TextField("Local XQuartz DISPLAY", text: $sshX11.display, prompt: Text("Detect after installing and starting XQuartz"))
+                            HStack {
+                                Button("Detect XQuartz Display") {
+                                    Task { do { sshX11.display = try await SSHX11Configuration.detectDisplay() }
+                                        catch { errorMessage = "Start XQuartz and log out/in after installation, then retry. DISPLAY must be a local XQuartz socket." } }
+                                }
+                                Link("XQuartz Setup", destination: URL(string: "https://www.xquartz.org/FAQs.html")!)
+                            }
+                            Text("Install XQuartz separately. The server must allow X11 forwarding and have xauth. No public X11 listener or xhost + is needed. A dedicated SSH transport prevents sharing the forwarded display with unrelated tabs.").font(.caption).foregroundStyle(.secondary)
+                            Text(sshX11.mode == .trusted ? "Trusted X11 lets remote applications monitor input and interact with other X applications on this Mac. Use only with a fully trusted host." : "Untrusted X11 restricts remote applications but may not work with applications or XQuartz configurations that require trusted forwarding.").font(.caption).foregroundStyle(.orange)
+                        }
                         }
 
                         Text("Automatic authentication follows your ~/.ssh/config and ssh-agent. Identity and jump-host settings override those values for this connection.")
@@ -330,7 +451,7 @@ struct ConnectionEditorView: View {
                     }
 
                     DisclosureGroup("Devices & Clipboard", isExpanded: $isShowingRDPDeviceOptions) {
-                        Toggle("Share clipboard", isOn: $rdpClipboard)
+                        Toggle("Share clipboard and enable file transfers", isOn: $rdpClipboard)
 
                         Picker("Remote Audio", selection: $rdpAudioMode) {
                             ForEach(RDPAudioMode.allCases) { mode in
@@ -370,6 +491,15 @@ struct ConnectionEditorView: View {
                             ForEach(RDPCertificatePolicy.allCases) { policy in
                                 Text(policy.displayName).tag(policy)
                             }
+                        }
+                        Picker("Session Security", selection: $rdpSecurityMode) {
+                            ForEach(RDPSecurityMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        if rdpSecurityMode == .legacyRDP {
+                            Text("Legacy RDP cannot verify the server using TLS certificates. Use only with a separately protected network route; you must confirm each new session.")
+                                .font(.caption).foregroundStyle(.orange)
                         }
 
                         if rdpCertificatePolicy == .ignore {
@@ -418,9 +548,12 @@ struct ConnectionEditorView: View {
         }
         .frame(
             width: 600,
-            height: kind == .rdp ? 780 : (kind == .serial ? 680 : (kind == .ssh && isShowingSSHOptions ? 690 : 560))
+            height: kind == .rdp || kind == .virtualization || kind == .vnc || kind == .spice ? 780 : (kind == .serial ? 680 : (kind == .ssh && isShowingSSHOptions ? 690 : 560))
         )
         .navigationTitle(connection == nil ? "New Connection" : "Edit Connection")
+        .confirmationDialog("Apply \(selectedTemplate?.name ?? "template")?", isPresented: $confirmsTemplate, titleVisibility: .visible) {
+            Button("Apply Settings to This Draft") { if let template = selectedTemplate { applyTemplate(template) }; selectedTemplate = nil }
+        } message: { Text("Copies credential-profile reference, port, jump/gateway, terminal profile, keepalive and scale where present. Host, name, group and saved passwords stay unchanged. Review the fields before Save.") }
         .task {
             refreshSerialPorts()
             guard let connection else { return }
@@ -431,6 +564,9 @@ struct ConnectionEditorView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if kind == .serial { refreshSerialPorts() }
         }
+    }
+    private func federationText(_ path: WritableKeyPath<VMFederationConfiguration, String>) -> Binding<String> {
+        Binding(get: { vmConfiguration.federation?[keyPath: path] ?? "" }, set: { vmConfiguration.federation?[keyPath: path] = $0 })
     }
 
     private var isValid: Bool {
@@ -450,7 +586,10 @@ struct ConnectionEditorView: View {
     }
 
     private func save() {
-        let updatedConnection = RemoteConnection(
+        if kind == .ssh, sshX11.mode != .off, !SSHX11Configuration.validDisplay(sshX11.display) {
+            errorMessage = "Configure a local XQuartz DISPLAY before saving X11 forwarding."; return
+        }
+        var updatedConnection = RemoteConnection(
             id: connection?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             kind: kind,
@@ -461,12 +600,13 @@ struct ConnectionEditorView: View {
             group: group.trimmingCharacters(in: .whitespacesAndNewlines),
             isFavorite: isFavorite,
             createdAt: connection?.createdAt ?? Date(),
-            sshAuthentication: kind == .ssh ? sshAuthentication : nil,
-            sshIdentityFile: kind == .ssh ? normalizedOptional(sshIdentityFile) : nil,
-            sshJumpHost: kind == .ssh ? normalizedOptional(sshJumpHost) : nil,
-            sshForwardAgent: kind == .ssh ? sshForwardAgent : nil,
-            sshCompression: kind == .ssh ? sshCompression : nil,
-            sshKeepAliveInterval: kind == .ssh ? sshKeepAliveInterval : nil,
+            sshAuthentication: usesSSH ? sshAuthentication : nil,
+            sshIdentityFile: usesSSH ? normalizedOptional(sshIdentityFile) : nil,
+            sshJumpHost: usesSSH ? normalizedOptional(sshJumpHost) : nil,
+            sshForwardAgent: usesSSH ? sshForwardAgent : nil,
+            sshCompression: usesSSH ? sshCompression : nil,
+            sshKeepAliveInterval: usesSSH ? sshKeepAliveInterval : nil,
+            sshX11: kind == .ssh && sshX11.mode != .off ? sshX11 : nil,
             serialBaudRate: kind == .serial ? serialBaudRate : nil,
             serialDataBits: kind == .serial ? serialDataBits : nil,
             serialParity: kind == .serial ? serialParity : nil,
@@ -491,12 +631,23 @@ struct ConnectionEditorView: View {
             rdpNetworkProfile: kind == .rdp ? rdpNetworkProfile : nil,
             rdpGraphicsAcceleration: kind == .rdp ? rdpGraphicsAcceleration : nil,
             rdpCertificatePolicy: kind == .rdp ? rdpCertificatePolicy : nil,
+            rdpSecurityMode: kind == .rdp ? rdpSecurityMode : nil,
             rdpAdminSession: kind == .rdp ? rdpAdminSession : nil,
             rdpAutoReconnect: kind == .rdp ? rdpAutoReconnect : nil,
-            rdpReconnectRetries: kind == .rdp ? rdpReconnectRetries : nil
+            rdpReconnectRetries: kind == .rdp ? rdpReconnectRetries : nil,
+            virtualization: [.virtualization, .vnc, .spice].contains(kind) ? vmConfiguration : nil
         )
 
+        updatedConnection.terminalProfileID = terminalProfileID
+        updatedConnection.terminalAppearance = terminalProfileID == connection?.terminalProfileID ? connection?.terminalAppearance : nil
+        updatedConnection.inheritedFields = Set(inheritedFields.filter { $0.supports(kind) })
+
         do {
+            if usesSSH { _ = try SSHJumpChain.validate(sshJumpHost) }
+            if updatedConnection.virtualization != nil {
+                try vmConfiguration.validate()
+                _ = try VMInput.endpoint(for: updatedConnection)
+            }
             if connection == nil {
                 try appState.add(updatedConnection, password: credentialProfileID == nil && kind != .serial ? password : nil)
             } else {
@@ -519,6 +670,18 @@ struct ConnectionEditorView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func applyTemplate(_ template: ConnectionTemplate) {
+        let defaults = template.defaults
+        if let id = defaults.credentialProfileID { credentialProfileID = id }
+        if let value = defaults.ports[kind] { port = value }
+        if let value = defaults.jumpHost, kind == .ssh { sshJumpHost = value }
+        if let value = defaults.gateway, kind == .rdp { rdpGatewayHost = value }
+        if let id = defaults.terminalProfileID { terminalProfileID = id }
+        if let value = defaults.keepAlive, kind == .ssh { sshKeepAliveInterval = value }
+        if let value = defaults.desktopScale, kind == .rdp { rdpScale = value }
+        inheritedFields.subtract(defaults.populatedFields(for: kind))
+    }
+
     private var footerText: String {
         switch kind {
         case .ssh:
@@ -531,6 +694,28 @@ struct ConnectionEditorView: View {
             "RDP uses the bundled FreeRDP runtime. Saved passwords remain in Keychain."
         case .localShell:
             "Local terminal sessions run on this Mac."
+        case .virtualization:
+            "Host credentials stay in Keychain. VM console tickets remain in memory only."
+        case .vnc, .spice:
+            "Use SSH tunneling or secure WebSocket for consoles outside a trusted network."
+        }
+    }
+
+    private var usesSSH: Bool { kind == .ssh || (kind == .virtualization && vmConfiguration.platform.usesSSH) }
+    private func optionalText(_ key: WritableKeyPath<VirtualizationConfiguration, String?>) -> Binding<String> {
+        Binding(get: { vmConfiguration[keyPath: key] ?? "" }, set: { vmConfiguration[keyPath: key] = normalizedOptional($0) })
+    }
+    private func optionalBool(_ key: WritableKeyPath<VirtualizationConfiguration, Bool?>) -> Binding<Bool> {
+        Binding(get: { vmConfiguration[keyPath: key] ?? false }, set: { vmConfiguration[keyPath: key] = $0 })
+    }
+    private var certificatePicker: some View {
+        VStack(alignment: .leading) {
+            Picker("Host Certificate", selection: Binding(get: { vmConfiguration.effectiveCertificatePolicy }, set: { vmConfiguration.certificatePolicy = $0 })) {
+                ForEach(RDPCertificatePolicy.allCases) { Text($0.displayName).tag($0) }
+            }
+            if vmConfiguration.effectiveCertificatePolicy == .ignore {
+                Text("Certificate verification is disabled. This permits server impersonation; use system validation or verify a trust-on-first-use fingerprint.").font(.caption).foregroundStyle(.orange)
+            }
         }
     }
 

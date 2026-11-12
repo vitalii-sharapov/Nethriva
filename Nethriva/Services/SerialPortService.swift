@@ -47,6 +47,10 @@ struct SerialPortConfiguration {
 }
 
 final class SerialPortService {
+    static func isTerminalDevice(_ fd: Int32) -> Bool {
+        var info = stat()
+        return fstat(fd, &info) == 0 && info.st_mode & S_IFMT == S_IFCHR && isatty(fd) == 1
+    }
     enum State {
         case connected
         case ended(String)
@@ -69,12 +73,12 @@ final class SerialPortService {
                 self.finish("Invalid serial port or settings.")
                 return
             }
-            let fd = Darwin.open(configuration.path, O_RDWR | O_NOCTTY | O_NONBLOCK)
+            let fd = Darwin.open(configuration.path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else {
                 self.finish("Could not open \(configuration.path): \(self.systemError())")
                 return
             }
-            guard self.configure(fd, with: configuration) else {
+            guard Self.isTerminalDevice(fd), self.configure(fd, with: configuration) else {
                 let reason = self.systemError()
                 Darwin.close(fd)
                 self.finish("Could not configure serial port: \(reason)")
@@ -92,6 +96,7 @@ final class SerialPortService {
     func send(_ bytes: [UInt8]) {
         queue.async { [weak self] in
             guard let self, self.descriptor >= 0, !self.stopped else { return }
+            guard self.pendingOutput.count + bytes.count <= 1024 * 1024 else { self.finish("Serial output exceeded the queued-input limit."); return }
             self.pendingOutput.append(contentsOf: bytes)
             self.drainOutput()
         }

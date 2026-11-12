@@ -97,6 +97,7 @@
 {
 	[textCommonName release];
 	[textFingerprint release];
+	[textMismatch release];
 	[textIssuer release];
 	[textSubject release];
 	[messageLabel release];

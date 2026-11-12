@@ -9,6 +9,12 @@ xcuserdata/
 work/
 /outputs/
 *.xcarchive
+*.profraw
+*.profdata
 *.dmg
 *.nethriva
 *.nethriva-secure
+*.nethriva-shared
+# Local remote-desktop captures; preserve locally, never publish infrastructure images.
+/docs/Screenshots/10-connected-rdp-desktop.png
+/docs/Screenshots/13-sidebar-connected-rdp.png

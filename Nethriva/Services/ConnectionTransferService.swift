@@ -1,4 +1,6 @@
+import CommonCrypto
 import CryptoKit
+import Darwin
 import Foundation
 import Security
 
@@ -10,6 +12,89 @@ struct ConnectionArchiveCredential: Codable, Equatable {
 struct CredentialProfileSecret: Codable, Equatable {
     let profileID: UUID
     let password: String
+}
+
+/// Local review decisions, never decoded from an archive or exported.
+struct ConnectionImportOptions {
+    var approvedCapabilities: Set<UUID> = []
+    var approvedCredentialReuse: Set<UUID> = []
+}
+
+enum ConnectionImportSecurity {
+    static func capabilities(_ connection: RemoteConnection) -> [String] {
+        var values: [String] = []
+        if connection.sshForwardAgent == true { values.append("SSH agent forwarding") }
+        if connection.sshIdentityFile?.isEmpty == false { values.append("Local SSH identity file: " + (connection.sshIdentityFile ?? "")) }
+        if connection.sshX11?.mode != nil, connection.sshX11?.mode != .off { values.append("X11 forwarding") }
+        if connection.kind == .rdp {
+            if connection.effectiveRDPClipboard { values.append("Clipboard sharing") }
+            if connection.rdpMicrophone == true { values.append("Microphone") }
+            if connection.rdpRedirectHome == true { values.append("Home-folder access") }
+            if let folder = connection.rdpSharedFolder, !folder.isEmpty { values.append("Local folder: " + folder) }
+            if connection.rdpPrinters == true { values.append("Printers") }
+            if connection.rdpSmartCards == true { values.append("Smart cards") }
+            if connection.rdpUSBDevices == true { values.append("USB devices") }
+            if connection.effectiveRDPCertificatePolicy != .systemValidation { values.append("Non-system RDP certificate trust") }
+            if connection.effectiveRDPSecurityMode != .nla { values.append("RDP security compatibility mode") }
+        }
+        if let configuration = connection.virtualization {
+            if configuration.shareClipboard == true { values.append("Console clipboard sharing") }
+            if configuration.effectiveCertificatePolicy != .systemValidation { values.append("Non-system API certificate trust") }
+            if configuration.tunnelConnectionID != nil { values.append("Tunnel through a saved SSH connection") }
+            if configuration.federation != nil { values.append("External sign-in endpoints") }
+        }
+        return values
+    }
+
+    static func restricted(_ connection: RemoteConnection) -> RemoteConnection {
+        var safe = connection
+        safe.sshForwardAgent = false
+        safe.sshIdentityFile = nil
+        safe.sshX11 = nil
+        if safe.kind == .rdp {
+            safe.rdpClipboard = false
+            safe.rdpMicrophone = false
+            safe.rdpRedirectHome = false
+            safe.rdpSharedFolder = nil
+            safe.rdpPrinters = false
+            safe.rdpSmartCards = false
+            safe.rdpUSBDevices = false
+            safe.rdpCertificatePolicy = .systemValidation
+            safe.rdpSecurityMode = .nla
+        }
+        if var configuration = safe.virtualization {
+            configuration.shareClipboard = false
+            configuration.certificatePolicy = .systemValidation
+            configuration.tunnelConnectionID = nil
+            configuration.federation = nil
+            safe.virtualization = configuration
+        }
+        return safe
+    }
+
+    /// Only benign presentation changes may retain a saved credential automatically.
+    static func sameCredentialIdentity(_ lhs: RemoteConnection, _ rhs: RemoteConnection) -> Bool {
+        let leftX11 = lhs.sshX11 ?? SSHX11Configuration()
+        let rightX11 = rhs.sshX11 ?? SSHX11Configuration()
+        return lhs.kind == rhs.kind && lhs.host == rhs.host && lhs.port == rhs.port
+            && lhs.username == rhs.username && lhs.credentialProfileID == rhs.credentialProfileID
+            && lhs.effectiveSSHAuthentication == rhs.effectiveSSHAuthentication && lhs.sshIdentityFile == rhs.sshIdentityFile
+            && lhs.sshJumpHost == rhs.sshJumpHost && (lhs.sshForwardAgent == true) == (rhs.sshForwardAgent == true)
+            && leftX11.mode == rightX11.mode && (leftX11.mode == .off || leftX11.display == rightX11.display)
+            && lhs.rdpDomain == rhs.rdpDomain
+            && lhs.rdpGatewayHost == rhs.rdpGatewayHost && lhs.rdpGatewayUsername == rhs.rdpGatewayUsername
+            && lhs.effectiveRDPCertificatePolicy == rhs.effectiveRDPCertificatePolicy
+            && lhs.effectiveRDPSecurityMode == rhs.effectiveRDPSecurityMode
+            && lhs.rdpVirtualMachineID == rhs.rdpVirtualMachineID && sameVirtualizationIdentity(lhs.virtualization, rhs.virtualization)
+    }
+
+    private static func sameVirtualizationIdentity(_ lhs: VirtualizationConfiguration?, _ rhs: VirtualizationConfiguration?) -> Bool {
+        guard let lhs, let rhs else { return lhs == rhs }
+        return lhs.platform == rhs.platform && lhs.effectiveCertificatePolicy == rhs.effectiveCertificatePolicy
+            && lhs.effectiveLibvirtURI == rhs.effectiveLibvirtURI && lhs.consoleTransport == rhs.consoleTransport
+            && lhs.consolePath == rhs.consolePath && lhs.tunnelConnectionID == rhs.tunnelConnectionID
+            && (lhs.useBearerToken == true) == (rhs.useBearerToken == true) && lhs.federation == rhs.federation
+    }
 }
 
 struct ConnectionArchive: Codable, Equatable {
@@ -96,7 +181,7 @@ enum ConnectionTransferError: LocalizedError, Equatable {
         case .passwordRequired:
             "Enter the archive password."
         case .passwordTooShort:
-            "Use an export password containing at least eight characters."
+            "Use an export passphrase containing at least 15 characters."
         case .incorrectPassword:
             "The password is incorrect or the encrypted archive has been modified."
         case .invalidArchiveContent(let message):
@@ -110,7 +195,17 @@ enum ConnectionTransferError: LocalizedError, Equatable {
 enum ConnectionTransferService {
     static let plainFilenameExtension = "nethriva"
     static let encryptedFilenameExtension = "nethriva-secure"
-    static let defaultIterations = 250_000
+    static let defaultIterations = 600_000
+    static let minimumExportPasswordLength = 15
+
+    static func validExportPassword(_ password: String) -> Bool {
+        password.precomposedStringWithCanonicalMapping.unicodeScalars.count >= minimumExportPasswordLength
+            && password.utf8.count <= 65_536
+    }
+
+    static func validateForImport(_ archive: ConnectionArchive) throws {
+        try validate(archive, allowsCredentials: true)
+    }
 
     private static let encryptedFormatIdentifier = "com.vitalii.nethriva.connections.encrypted"
     private static let maximumArchiveSize = 25 * 1_024 * 1_024
@@ -158,7 +253,9 @@ enum ConnectionTransferService {
 
     static func encodePlain(_ archive: ConnectionArchive) throws -> Data {
         try validate(archive, allowsCredentials: false)
-        return try configuredEncoder().encode(archive)
+        let data = try configuredEncoder().encode(archive)
+        try validateFileSize(data)
+        return data
     }
 
     static func encodeEncrypted(
@@ -166,7 +263,7 @@ enum ConnectionTransferService {
         password: String,
         iterations: Int = defaultIterations
     ) throws -> Data {
-        guard password.count >= 8 else { throw ConnectionTransferError.passwordTooShort }
+        guard validExportPassword(password) else { throw ConnectionTransferError.passwordTooShort }
         try validate(archive, allowsCredentials: true)
         let payload = try configuredEncoder().encode(archive)
         let salt = try secureRandomData(count: 16)
@@ -184,7 +281,9 @@ enum ConnectionTransferService {
             salt: salt,
             sealedPayload: combined
         )
-        return try configuredEncoder().encode(envelope)
+        let data = try configuredEncoder().encode(envelope)
+        try validateFileSize(data)
+        return data
     }
 
     static func decodeEncrypted(_ data: Data, password: String) throws -> ConnectionArchive {
@@ -227,12 +326,58 @@ enum ConnectionTransferService {
         }
     }
 
+    /// Only bounded regular files are imported. A path cannot turn into a FIFO,
+    /// device or symlink between the type check and the read.
+    static func read(from url: URL) throws -> Data {
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw ConnectionTransferError.invalidArchive }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var before = stat()
+        guard fstat(descriptor, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              before.st_size >= 0, before.st_size <= maximumArchiveSize else {
+            throw ConnectionTransferError.fileTooLarge
+        }
+        var data = Data()
+        while let chunk = try handle.read(upToCount: min(65_536, maximumArchiveSize - data.count + 1)), !chunk.isEmpty {
+            guard data.count + chunk.count <= maximumArchiveSize else { throw ConnectionTransferError.fileTooLarge }
+            data.append(chunk)
+        }
+        var after = stat()
+        guard fstat(descriptor, &after) == 0, after.st_size == before.st_size,
+              after.st_mtimespec.tv_sec == before.st_mtimespec.tv_sec,
+              after.st_mtimespec.tv_nsec == before.st_mtimespec.tv_nsec,
+              data.count == before.st_size else { throw ConnectionTransferError.invalidArchive }
+        return data
+    }
+
+    /// The save panel authorizes replacing its selected regular file. Keep the
+    /// staged archive private from creation, never chmod or follow a destination
+    /// symlink, and atomically rename within the held parent directory.
     static func write(_ data: Data, to url: URL) throws {
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: Int16(0o600))],
-            ofItemAtPath: url.path
-        )
+        try validateFileSize(data)
+        let parent = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parent >= 0 else { throw ConnectionTransferError.invalidArchive }
+        defer { Darwin.close(parent) }
+        let name = url.lastPathComponent
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { throw ConnectionTransferError.invalidArchive }
+        var target = stat()
+        if fstatat(parent, name, &target, AT_SYMLINK_NOFOLLOW) == 0 {
+            guard target.st_mode & S_IFMT == S_IFREG else { throw ConnectionTransferError.invalidArchive }
+        } else if errno != ENOENT { throw ConnectionTransferError.invalidArchive }
+        let temporary = ".nethriva-archive-" + UUID().uuidString
+        let descriptor = openat(parent, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw ConnectionTransferError.invalidArchive }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close(); _ = unlinkat(parent, temporary, 0) }
+        try handle.write(contentsOf: data)
+        try handle.synchronize()
+        // Replacing a symlink would not follow it, but refuse it rather than
+        // silently changing the user's choice when another process swaps it.
+        if fstatat(parent, name, &target, AT_SYMLINK_NOFOLLOW) == 0 {
+            guard target.st_mode & S_IFMT == S_IFREG else { throw ConnectionTransferError.invalidArchive }
+        } else if errno != ENOENT { throw ConnectionTransferError.invalidArchive }
+        guard renameat(parent, temporary, parent, name) == 0 else { throw ConnectionTransferError.invalidArchive }
     }
 
     private static func validateFileSize(_ data: Data) throws {
@@ -271,6 +416,7 @@ enum ConnectionTransferService {
                 connection.host.count <= 4_096 &&
                 connection.username.count <= 4_096 &&
                 connection.group.count <= 1_024 &&
+                [connection.name, connection.host, connection.username, connection.group].allSatisfy({ $0.rangeOfCharacter(from: .controlCharacters) == nil }) &&
                 (connection.kind == .serial
                     ? connection.port == 0 && SerialPortDiscovery.isValidDevicePath(connection.host)
                         && SerialPortConfiguration(connection: connection).isValid
@@ -279,24 +425,59 @@ enum ConnectionTransferService {
             throw ConnectionTransferError.invalidArchiveContent("one or more connection records are malformed")
         }
         let profileIDs = archive.profiles.map(\.id)
+        let profileIDSet = Set(profileIDs)
+        for connection in archive.connections {
+            let settings = [connection.sshIdentityFile, connection.sshJumpHost, connection.rdpDomain,
+                connection.rdpGatewayHost, connection.rdpGatewayUsername, connection.rdpSharedFolder, connection.rdpVirtualMachineID].compactMap { $0 }
+            guard settings.allSatisfy({ $0.utf8.count <= 16_384 && $0.rangeOfCharacter(from: .controlCharacters) == nil }) else {
+                throw ConnectionTransferError.invalidArchiveContent("invalid connection option text")
+            }
+            if connection.kind == .ssh {
+                do { try SSHInputValidation.validate(connection) }
+                catch { throw ConnectionTransferError.invalidArchiveContent("invalid SSH connection options") }
+            }
+            if let x11 = connection.sshX11 {
+                guard connection.kind == .ssh, x11.mode == .off || SSHX11Configuration.validDisplay(x11.display) else {
+                    throw ConnectionTransferError.invalidArchiveContent("invalid local X11 display settings")
+                }
+            }
+            guard connection.inheritedFields?.isEmpty != false else {
+                throw ConnectionTransferError.invalidArchiveContent("archives must contain materialized settings, not live group-inheritance rules")
+            }
+            guard connection.terminalProfileID == nil else {
+                throw ConnectionTransferError.invalidArchiveContent("archives must embed terminal appearance, not local profile references")
+            }
+            do { try connection.terminalAppearance?.validate() }
+            catch { throw ConnectionTransferError.invalidArchiveContent("invalid terminal appearance") }
+        }
+        for connection in archive.connections where connection.virtualization != nil {
+            do {
+                try connection.virtualization?.validate()
+                _ = try VMInput.endpoint(for: connection)
+            } catch {
+                throw ConnectionTransferError.invalidArchiveContent("invalid virtualization or console settings")
+            }
+        }
         guard archive.profiles.count <= 100_000,
-              Set(profileIDs).count == profileIDs.count,
-              Set(profileIDs).isDisjoint(with: Set(connectionIDs)),
+              profileIDSet.count == profileIDs.count,
+              profileIDSet.isDisjoint(with: Set(connectionIDs)),
               archive.profiles.allSatisfy({ profile in
                   !profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !profile.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && profile.name.count <= 1_024
                     && profile.username.count <= 4_096
                     && profile.domain.count <= 4_096
+                    && [profile.name, profile.username, profile.domain].allSatisfy({ $0.rangeOfCharacter(from: .controlCharacters) == nil })
               }),
               archive.connections.allSatisfy({ connection in
                   guard let profileID = connection.credentialProfileID else { return true }
-                  return connection.kind != .serial && profileIDs.contains(profileID)
+                  return connection.kind != .serial && profileIDSet.contains(profileID)
               }) else {
             throw ConnectionTransferError.invalidArchiveContent("credential profiles or links are malformed")
         }
         guard archive.groups.allSatisfy({ group in
             !group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && group.count <= 1_024
+                && group.rangeOfCharacter(from: .controlCharacters) == nil
         }) else {
             throw ConnectionTransferError.invalidArchiveContent("one or more group names are malformed")
         }
@@ -347,23 +528,38 @@ enum ConnectionTransferService {
         salt: Data,
         iterations: Int
     ) throws -> SymmetricKey {
-        guard iterations > 0 else { throw ConnectionTransferError.invalidArchive }
-        let normalizedPassword = password.precomposedStringWithCanonicalMapping
-        let passwordKey = SymmetricKey(data: Data(normalizedPassword.utf8))
-        var saltAndIndex = salt
-        var blockIndex = UInt32(1).bigEndian
-        withUnsafeBytes(of: &blockIndex) { saltAndIndex.append(contentsOf: $0) }
+        guard (10_000...2_000_000).contains(iterations) else { throw ConnectionTransferError.invalidArchive }
+        var key = try ConnectionArchiveKDF.derive(password: password, salt: salt, iterations: iterations)
+        defer { key.resetBytes(in: 0..<key.count) }
+        return SymmetricKey(data: key)
+    }
+}
 
-        var previous = Data(HMAC<SHA256>.authenticationCode(for: saltAndIndex, using: passwordKey))
-        var result = [UInt8](previous)
-        if iterations > 1 {
-            for _ in 1..<iterations {
-                previous = Data(HMAC<SHA256>.authenticationCode(for: previous, using: passwordKey))
-                for index in result.indices {
-                    result[index] ^= previous[index]
+/// PBKDF2 is supplied by macOS CommonCrypto. The archive format retains NFC
+/// normalization and a 256-bit key for compatibility with older exports.
+enum ConnectionArchiveKDF {
+    static func derive(password: String, salt: Data, iterations: Int) throws -> Data {
+        let passwordBytes = Array(password.precomposedStringWithCanonicalMapping.utf8)
+        guard !passwordBytes.isEmpty, passwordBytes.count <= 65_536,
+              !salt.isEmpty, salt.count <= 1024, (1...2_000_000).contains(iterations) else {
+            throw ConnectionTransferError.invalidArchive
+        }
+        var output = Data(count: 32)
+        let status = passwordBytes.withUnsafeBytes { passwordBuffer in
+            salt.withUnsafeBytes { saltBuffer in
+                output.withUnsafeMutableBytes { keyBuffer in
+                    CCKeyDerivationPBKDF(CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordBuffer.baseAddress!.assumingMemoryBound(to: CChar.self), passwordBytes.count,
+                        saltBuffer.baseAddress!.assumingMemoryBound(to: UInt8.self), salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256), UInt32(iterations),
+                        keyBuffer.baseAddress!.assumingMemoryBound(to: UInt8.self), keyBuffer.count)
                 }
             }
         }
-        return SymmetricKey(data: Data(result.prefix(32)))
+        guard status == kCCSuccess else {
+            output.resetBytes(in: 0..<output.count)
+            throw ConnectionTransferError.invalidArchive
+        }
+        return output
     }
 }

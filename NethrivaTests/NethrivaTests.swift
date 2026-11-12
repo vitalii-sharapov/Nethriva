@@ -33,11 +33,8 @@ final class NethrivaTests: XCTestCase {
     }
 
     func testBundledHelpCoversCoreWorkflows() throws {
-        let projectRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let helpURL = projectRoot
-            .appendingPathComponent("Nethriva/Resources/Help/NethrivaHelp.html")
+        // Verify the shipped help, without asking the test app for Documents-folder access.
+        let helpURL = try XCTUnwrap(Bundle.main.url(forResource: "NethrivaHelp", withExtension: "html"))
         let help = try String(contentsOf: helpURL, encoding: .utf8)
 
         for requiredTopic in [
@@ -50,6 +47,9 @@ final class NethrivaTests: XCTestCase {
             "Remote files beside SSH",
             "SFTP browser",
             "Embedded RDP",
+            "Virtualization hosts",
+            "VM consoles and controls",
+            "Ctrl+Alt+Del",
             "Import and export",
             "Security and privacy",
             "Troubleshooting",
@@ -292,9 +292,9 @@ final class NethrivaTests: XCTestCase {
         XCTAssertEqual(connection.effectiveRDPWidth, 1600)
         XCTAssertEqual(connection.effectiveRDPHeight, 1000)
         XCTAssertEqual(connection.effectiveRDPScale, 100)
-        XCTAssertTrue(connection.effectiveRDPClipboard)
+        XCTAssertFalse(connection.effectiveRDPClipboard)
         XCTAssertEqual(connection.effectiveRDPAudioMode, .local)
-        XCTAssertEqual(connection.effectiveRDPCertificatePolicy, .trustOnFirstUse)
+        XCTAssertEqual(connection.effectiveRDPCertificatePolicy, .systemValidation)
         XCTAssertTrue(connection.effectiveRDPAutoReconnect)
     }
 
@@ -478,11 +478,12 @@ final class NethrivaTests: XCTestCase {
     }
 
     func testEmbeddedRDPEnablesClipboardWithoutAnAutomaticLocalDrive() throws {
-        let connection = RemoteConnection(
+        var connection = RemoteConnection(
             name: "Files Desktop",
             kind: .rdp,
             host: "desktop.example.com"
         )
+        connection.rdpClipboard = true
 
         let arguments = try FreeRDPArgumentsBuilder.arguments(
             for: connection,
@@ -523,30 +524,15 @@ final class NethrivaTests: XCTestCase {
         XCTAssertEqual(environment["OPENSSL_MODULES"], expectedModules.path)
     }
 
-    func testSFTPCommandsUseRecursiveFolderTransfers() {
-        let localFolder = URL(fileURLWithPath: "/tmp/Project Files", isDirectory: true)
-        let remoteFolder = SFTPFileItem(
-            name: "Logs",
-            path: "/srv/Logs",
-            isDirectory: true,
-            isSymbolicLink: false,
-            size: 0,
-            permissions: "drwxr-xr-x",
-            modifiedText: "Sep 14 12:00"
-        )
-
-        XCTAssertEqual(
-            SFTPCommandBuilder.upload(localURL: localFolder, to: "/srv", isDirectory: true),
-            "put -pR \"/tmp/Project Files\" \"/srv/Project Files\""
-        )
-        XCTAssertEqual(
-            SFTPCommandBuilder.download(item: remoteFolder, to: URL(fileURLWithPath: "/tmp/Logs")),
-            "get -pR \"/srv/Logs\" \"/tmp/Logs\""
-        )
-        XCTAssertEqual(
-            SFTPCommandBuilder.move(remotePath: "/srv/Logs", to: "/archive"),
-            "rename \"/srv/Logs\" \"/archive/Logs\""
-        )
+    func testSFTPBinaryPathsPreserveLiteralSpecialNames() throws {
+        for name in ["Project Files", "a\\\"b", "a\\\\b", "*.txt", "日本語.txt"] {
+            XCTAssertNoThrow(try SFTPPath.component(name))
+            var bytes = SFTPBytes(); bytes.string(name)
+            var reader = SFTPReader(data: bytes.data)
+            XCTAssertEqual(try reader.text(), name)
+        }
+        XCTAssertEqual(SFTPPath.join("/srv", "Logs"), "/srv/Logs")
+        XCTAssertThrowsError(try SFTPPath.component("../escape"))
     }
 
     func testSFTPArgumentsArePassedThroughExpectEnvironment() {
@@ -577,13 +563,14 @@ final class NethrivaTests: XCTestCase {
         XCTAssertThrowsError(try SFTPService.validate(commands: ["rename \"old\rname\" \"new\""]))
     }
 
-    func testSSHConnectionReuseUsesHashedOpenSSHControlSocket() {
-        let arguments = SSHConnectionReuse.arguments
+    func testSSHConnectionReuseUsesHashedOpenSSHControlSocket() throws {
+        let connection = RemoteConnection(name: "Synthetic SSH", kind: .ssh, host: "ssh.example.invalid")
+        let arguments = try SSHConnectionReuse.arguments(for: connection)
 
         XCTAssertTrue(arguments.contains("ControlMaster=auto"))
         XCTAssertTrue(arguments.contains("ControlPersist=600"))
-        XCTAssertTrue(arguments.contains { $0.hasPrefix("ControlPath=/private/tmp/Nethriva-") })
-        XCTAssertTrue(arguments.contains { $0.hasSuffix("/%C.socket") })
+        XCTAssertTrue(arguments.contains("ControlPath=\(try SSHConnectionReuse.controlPath(for: connection))"))
+        XCTAssertTrue(arguments.contains { $0.hasSuffix("-%C.s") })
     }
 
     func testTelnetNegotiationIsRemovedFromTerminalOutput() {
@@ -822,8 +809,11 @@ final class NethrivaTests: XCTestCase {
         XCTAssertEqual(state.connections.first { $0.id == id }?.name, "Original Name")
 
         let replaced = try state.importConnectionArchive(archive, conflictPolicy: .replaceExisting)
-        XCTAssertEqual(replaced.replaced, 1)
-        XCTAssertEqual(state.connections.first { $0.id == id }?.name, "Replacement Name")
+        XCTAssertEqual(replaced.isolatedConnections, 1)
+        XCTAssertEqual(state.connections.first { $0.id == id }?.name, "Original Name")
+        let imported = try XCTUnwrap(state.connections.first { $0.name == "Replacement Name" })
+        XCTAssertNotEqual(imported.id, id)
+        XCTAssertEqual(imported.host, replacement.host)
     }
 
     func testDebugBuildUsesAnIsolatedConnectionLibraryAndKeychainService() {
@@ -923,21 +913,15 @@ final class NethrivaTests: XCTestCase {
         XCTAssertFalse(report.contains(connection.group))
     }
 
-    func testSFTPListingParsesCRLFOutput() {
-        let output = """
-        sftp> pwd\r
-        Remote working directory: /home/testuser\r
-        sftp> ls -lan\r
-        drwxr-xr-x 3 1000 1000 4096 Sep 15 00:00 Documents\r
-        -rw-r--r-- 1 1000 1000 128 Sep 15 00:01 notes.txt\r
-        """
-        let service = SFTPService()
-
-        XCTAssertEqual(service.parseWorkingDirectory(from: output), "/home/testuser")
-        let items = service.parseListing(output, parentPath: "/home/testuser")
-        XCTAssertEqual(items.map(\.name), ["Documents", "notes.txt"])
-        XCTAssertEqual(items.first?.path, "/home/testuser/Documents")
-        XCTAssertTrue(items.first?.isDirectory == true)
+    func testSFTPStructuredAttributesDoNotParseTerminalOutput() throws {
+        var bytes = SFTPBytes(); bytes.uint32(1 | 4 | 8); bytes.uint64(128)
+        bytes.uint32(0o100644); bytes.uint32(0); bytes.uint32(123)
+        var reader = SFTPReader(data: bytes.data)
+        let attributes = try SFTPAttributes.decode(&reader)
+        XCTAssertEqual(attributes.size, 128)
+        XCTAssertEqual(attributes.permissions, "-rw-r--r--")
+        XCTAssertTrue(attributes.regular)
+        XCTAssertEqual(attributes.modified, 123)
     }
 
     func testSFTPTabHasDistinctIdentityAndTitle() {
@@ -1387,6 +1371,35 @@ final class NethrivaTests: XCTestCase {
         XCTAssertEqual(groupStore.load(), originalGroups)
         XCTAssertEqual(state.connections.first(where: { $0.id == connection.id })?.group,
                        "Lab/Servers")
+    }
+
+    @MainActor
+    func testTemporaryVMLoginNeverChangesLibraryOrExportsAndClearsOnLastTabClose() throws {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+        let store = UserDefaultsConnectionStore(defaults: defaults, storageKey: "connections", legacyDefaults: nil)
+        let groups = UserDefaultsConnectionGroupStore(defaults: defaults, storageKey: "groups")
+        let vault = TestCredentialVault()
+        let state = AppState(store: store, groupStore: groups, credentialVault: vault)
+        let host = RemoteConnection(name: "Test host", kind: .virtualization, host: "host.example.test", username: "saved-user")
+        try state.add(host, password: "unit-test-saved-placeholder")
+        state.open(host)
+        let hostTab = try XCTUnwrap(state.selectedTabID)
+        state.useVMLogin(username: "temporary-user", password: "unit-test-temporary-placeholder", for: host)
+        state.openVMConsole(VirtualMachine(id: "test-vm", name: "Test guest", state: .running), on: host)
+        let consoleTab = try XCTUnwrap(state.selectedTabID)
+        XCTAssertEqual(state.selectedTab?.connection.username, "temporary-user")
+        XCTAssertEqual(try state.password(for: host), "unit-test-temporary-placeholder")
+        let archive = try state.makeConnectionArchive(includeCredentials: true)
+        XCTAssertEqual(archive.connections.first?.username, "saved-user")
+        XCTAssertEqual(archive.credentials.first?.password, "unit-test-saved-placeholder")
+        XCTAssertEqual(try store.load().connections.first(where: { $0.id == host.id })?.username, "saved-user")
+        state.close(tabID: hostTab)
+        XCTAssertEqual(try state.password(for: host), "unit-test-temporary-placeholder")
+        state.close(tabID: consoleTab)
+        XCTAssertEqual(try state.password(for: host), "unit-test-saved-placeholder")
+        XCTAssertEqual(state.resolvedConnection(for: host).username, "saved-user")
     }
 
     @MainActor

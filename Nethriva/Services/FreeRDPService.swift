@@ -30,6 +30,15 @@ struct FreeRDPArgumentsBuilder {
         guard connection.kind == .rdp else {
             throw FreeRDPServiceError.invalidSetting("The selected connection is not an RDP connection.")
         }
+        let fields: [(String, Int)] = [(connection.host, 1024), (connection.username, 4096),
+            (connection.rdpDomain ?? "", 4096), (connection.rdpGatewayHost ?? "", 1024),
+            (connection.rdpGatewayUsername ?? "", 4096), (connection.rdpSharedFolder ?? "", 16384),
+            (password ?? "", 65536)]
+        guard (1...65535).contains(connection.port), fields.allSatisfy({ value, limit in
+            value.utf8.count <= limit && value.rangeOfCharacter(from: .controlCharacters) == nil
+        }) else {
+            throw FreeRDPServiceError.invalidSetting("RDP settings must use bounded single-line values without control characters and a valid port.")
+        }
 
         let host = clean(connection.host)
         var username = clean(connection.username).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,7 +52,8 @@ struct FreeRDPArgumentsBuilder {
                 domain = domain ?? embeddedDomain
             }
         }
-        guard !host.isEmpty else {
+        guard !host.isEmpty, host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              host.rangeOfCharacter(from: CharacterSet.alphanumerics.union(.init(charactersIn: "-._:[]%")).inverted) == nil else {
             throw FreeRDPServiceError.invalidSetting("Enter an RDP host name or address.")
         }
 
@@ -51,7 +61,7 @@ struct FreeRDPArgumentsBuilder {
         let effectiveScale = [100, 140, 180].contains(requestedScale) ? requestedScale : 100
 
         var arguments = [
-            "/v:\(host):\(connection.port)",
+            "/v:\(host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host):\(connection.port)",
             "/network:\(connection.effectiveRDPNetworkProfile.rawValue)",
             "/scale:\(effectiveScale)",
             "+compression",
@@ -61,10 +71,22 @@ struct FreeRDPArgumentsBuilder {
             "+multitouch",
             "/log-level:INFO",
         ]
+        // Enabling NLA alongside alternatives does not prevent protocol downgrade.
+        switch connection.effectiveRDPSecurityMode {
+        case .nla: arguments.append("/sec:nla")
+        case .tls: arguments.append("/sec:tls")
+        case .legacyRDP: arguments.append("/sec:rdp")
+        }
 
         if !username.isEmpty { arguments.append("/u:\(username)") }
         if let password, !password.isEmpty { arguments.append("/p:\(clean(password))") }
         if let domain { arguments.append("/d:\(domain)") }
+        if let id = connection.rdpVirtualMachineID {
+            guard UUID(uuidString: id) != nil else {
+                throw FreeRDPServiceError.invalidSetting("The Hyper-V VM identifier is invalid.")
+            }
+            arguments.append("/vmconnect:\(id)")
+        }
 
         switch surface {
         case .embedded(let width, let height):
@@ -135,6 +157,10 @@ struct FreeRDPArgumentsBuilder {
         }
 
         if let gatewayHost = normalized(connection.rdpGatewayHost) {
+            guard !gatewayHost.contains(","), gatewayHost.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+                  connection.rdpGatewayUsername?.contains(",") != true else {
+                throw FreeRDPServiceError.invalidSetting("RDP gateway fields cannot contain comma-delimited options or whitespace in the address.")
+            }
             var gatewayParts = ["g:\(gatewayHost)", "usage-method:direct"]
             if let gatewayUsername = normalized(connection.rdpGatewayUsername) {
                 gatewayParts.insert("u:\(gatewayUsername)", at: 1)
@@ -169,7 +195,7 @@ final class FreeRDPRuntimeLocator {
         let fileManager = FileManager.default
         var candidates: [String] = []
 
-        let bundledRoot = Bundle.main.resourceURL?.appendingPathComponent("FreeRDP/MacOS")
+        let bundledRoot = RDPRuntimeArchitecture.root(resourceURL: Bundle.main.resourceURL)?.appendingPathComponent("MacOS")
         if let bundledRoot {
             candidates += [
                 bundledRoot.appendingPathComponent("sdl-freerdp").path,

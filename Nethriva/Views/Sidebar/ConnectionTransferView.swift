@@ -31,6 +31,8 @@ struct ConnectionTransferView: View {
     @State private var archive: ConnectionArchive?
     @State private var requiresPassword = false
     @State private var conflictPolicy: ConnectionImportConflictPolicy = .keepExisting
+    @State private var approvedCapabilities = Set<UUID>()
+    @State private var approvedCredentialReuse = Set<UUID>()
     @State private var isBusy = false
     @State private var errorMessage: String?
     @State private var completionMessage: String?
@@ -70,7 +72,7 @@ struct ConnectionTransferView: View {
             }
         }
         .padding(24)
-        .frame(width: 560, height: 500)
+        .frame(width: 680, height: 680)
         .navigationTitle(title)
         .task { await prepareImportIfNeeded() }
         .onDisappear {
@@ -112,7 +114,7 @@ struct ConnectionTransferView: View {
                         .textContentType(.newPassword)
                     SecureField("Confirm password", text: $confirmPassword)
                         .textContentType(.newPassword)
-                    Text("Credentials are protected with password-based AES-256-GCM encryption. This password cannot be recovered.")
+                    Text("Use a unique passphrase of at least 15 characters. Credentials use AES-256-GCM with PBKDF2-HMAC-SHA256. This passphrase cannot be recovered.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -181,12 +183,10 @@ struct ConnectionTransferView: View {
     }
 
     private func importPreview(_ archive: ConnectionArchive) -> some View {
-        let duplicateCount = archive.connections.filter { imported in
-            appState.connections.contains { $0.id == imported.id }
-        }.count
-        let duplicateProfileCount = archive.profiles.filter { imported in
-            appState.credentialProfiles.contains { $0.id == imported.id }
-        }.count
+        let currentConnectionIDs = Set(appState.connections.map(\.id))
+        let currentProfileIDs = Set(appState.credentialProfiles.map(\.id))
+        let duplicateCount = archive.connections.filter { currentConnectionIDs.contains($0.id) }.count
+        let duplicateProfileCount = archive.profiles.filter { currentProfileIDs.contains($0.id) }.count
 
         return VStack(alignment: .leading, spacing: 16) {
             GroupBox("Archive Preview") {
@@ -210,6 +210,8 @@ struct ConnectionTransferView: View {
                         .padding(.vertical, 4)
                 }
             }
+
+            importSecurityReview(archive)
 
             if duplicateCount + duplicateProfileCount > 0 {
                 Picker("Matching connections or profiles", selection: $conflictPolicy) {
@@ -236,6 +238,45 @@ struct ConnectionTransferView: View {
         }
     }
 
+    private func importSecurityReview(_ archive: ConnectionArchive) -> some View {
+        GroupBox("Review targets and local access") {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    Text("Existing credentials stay with their original login identity. Changed targets become separate items. Access settings from the file are disabled unless you approve the listed settings below.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(archive.connections) { connection in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(connection.name).font(.callout.bold())
+                            Text("\(connection.kind.rawValue) · \(connection.host):\(connection.port)")
+                                .font(.caption.monospaced()).textSelection(.enabled)
+                            if !connection.username.isEmpty {
+                                Text("Imported account: \(connection.username)").font(.caption)
+                            }
+                            let capabilities = ConnectionImportSecurity.capabilities(connection)
+                            if !capabilities.isEmpty {
+                                Text(capabilities.joined(separator: "; ")).font(.caption).foregroundStyle(.secondary)
+                                Toggle("Restore these access settings for this target", isOn: Binding(
+                                    get: { approvedCapabilities.contains(connection.id) },
+                                    set: { if $0 { approvedCapabilities.insert(connection.id) } else { approvedCapabilities.remove(connection.id) } }
+                                )).font(.caption)
+                            }
+                            if let profileID = connection.credentialProfileID,
+                               let current = appState.credentialProfiles.first(where: { $0.id == profileID }) {
+                                Text("Current saved profile: \(current.name) — \(current.username)\(current.domain.isEmpty ? "" : " (" + current.domain + ")")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Toggle("Allow this current credential profile for this target", isOn: Binding(
+                                    get: { approvedCredentialReuse.contains(connection.id) },
+                                    set: { if $0 { approvedCredentialReuse.insert(connection.id) } else { approvedCredentialReuse.remove(connection.id) } }
+                                )).font(.caption)
+                            }
+                        }
+                        Divider()
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(4)
+            }.frame(minHeight: 110, maxHeight: .infinity)
+        }
+    }
+
     private func previewRow(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label).foregroundStyle(.secondary)
@@ -248,7 +289,7 @@ struct ConnectionTransferView: View {
     }
 
     private var exportPasswordIsValid: Bool {
-        !includeCredentials || (exportPassword.count >= 8 && exportPassword == confirmPassword)
+        !includeCredentials || (ConnectionTransferService.validExportPassword(exportPassword) && exportPassword == confirmPassword)
     }
 
     @MainActor
@@ -297,9 +338,11 @@ struct ConnectionTransferView: View {
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         do {
-            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            let (data, inspection) = try await Task.detached(priority: .userInitiated) {
+                let data = try ConnectionTransferService.read(from: url)
+                return (data, try ConnectionTransferService.inspect(data))
+            }.value
             archiveData = data
-            let inspection = try ConnectionTransferService.inspect(data)
             switch inspection.content {
             case .plain(let archive):
                 self.archive = archive
@@ -337,7 +380,9 @@ struct ConnectionTransferView: View {
         do {
             let summary = try appState.importConnectionArchive(
                 archive,
-                conflictPolicy: conflictPolicy
+                conflictPolicy: conflictPolicy,
+                options: ConnectionImportOptions(approvedCapabilities: approvedCapabilities,
+                    approvedCredentialReuse: approvedCredentialReuse)
             )
             completionMessage = summary.message
         } catch {

@@ -249,15 +249,21 @@ DWORD WINAPI mac_client_thread(void *param)
 		           owner:self
 		        userInfo:nil];
 		[self addTrackingArea:trackingArea];
+		[trackingArea release];
 		// Set the default cursor
-		currentCursor = [NSCursor arrowCursor];
+		currentCursor = [[NSCursor arrowCursor] retain];
 		initialized = YES;
 	}
 }
 
 - (void)setCursor:(NSCursor *)cursor
 {
-	self->currentCursor = cursor;
+	@synchronized(self)
+	{
+		[cursor retain];
+		[self->currentCursor release];
+		self->currentCursor = cursor;
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		[[self window] invalidateCursorRectsForView:self];
 	});
@@ -265,7 +271,20 @@ DWORD WINAPI mac_client_thread(void *param)
 
 - (void)resetCursorRects
 {
-	[self addCursorRect:[self visibleRect] cursor:currentCursor];
+	@synchronized(self)
+	{
+		[self addCursorRect:[self visibleRect] cursor:currentCursor];
+	}
+}
+
+- (void)dealloc
+{
+	[cursors release];
+	[windows release];
+	[currentCursor release];
+	if (bitmap_context)
+		CGContextRelease(bitmap_context);
+	[super dealloc];
 }
 
 - (BOOL)acceptsFirstResponder
@@ -794,6 +813,9 @@ static BOOL releaseFlagStates(rdpInput *input, UINT32 aKbdModFlags)
 	WINPR_UNUSED(timer);
 	if (!mfc || !mfc->clipboard || !mfc->cliprdr || !pasteboard_rd)
 		return;
+	// Automatic sharing belongs only to the visibly focused session.
+	if (![self.window isKeyWindow] || self.isHiddenOrHasHiddenAncestor || self.window.firstResponder != self)
+		return;
 
 	int changeCount;
 	changeCount = (int)[pasteboard_rd changeCount];
@@ -823,6 +845,9 @@ static BOOL releaseFlagStates(rdpInput *input, UINT32 aKbdModFlags)
 {
 	if (!is_connected || !instance || !instance->context)
 		return;
+	if (![self.window isKeyWindow] || self.isHiddenOrHasHiddenAncestor)
+		return;
+	[self.window makeFirstResponder:self];
 
 	[self onPasteboardTimerFired:nil];
 	releaseFlagStates(instance->context->input, kbdModFlags);
@@ -1369,6 +1394,8 @@ DWORD mac_verify_certificate_ex(freerdp *instance, const char *host, UINT16 port
                                 const char *common_name, const char *subject, const char *issuer,
                                 const char *fingerprint, DWORD flags)
 {
+	if (!instance || !instance->context || !host || !fingerprint || (flags & VERIFY_CERT_FLAG_CHANGED))
+		return 0;
 	mfContext *mfc = (mfContext *)instance->context;
 	MRDPView *view = (MRDPView *)mfc->view;
 	CertificateDialog *dialog = [CertificateDialog new];
@@ -1383,9 +1410,9 @@ DWORD mac_verify_certificate_ex(freerdp *instance, const char *host, UINT16 port
 
 	sprintf_s(hostname, sizeof(hostname), "%s %s:%" PRIu16, type, host, port);
 	dialog.serverHostname = [NSString stringWithCString:hostname encoding:NSUTF8StringEncoding];
-	dialog.commonName = [NSString stringWithCString:common_name encoding:NSUTF8StringEncoding];
-	dialog.subject = [NSString stringWithCString:subject encoding:NSUTF8StringEncoding];
-	dialog.issuer = [NSString stringWithCString:issuer encoding:NSUTF8StringEncoding];
+	dialog.commonName = common_name ? [NSString stringWithCString:common_name encoding:NSUTF8StringEncoding] : @"Not provided";
+	dialog.subject = subject ? [NSString stringWithCString:subject encoding:NSUTF8StringEncoding] : @"Not provided";
+	dialog.issuer = issuer ? [NSString stringWithCString:issuer encoding:NSUTF8StringEncoding] : @"Not provided";
 	dialog.fingerprint = [NSString stringWithCString:fingerprint encoding:NSUTF8StringEncoding];
 
 	if (flags & VERIFY_CERT_FLAG_MISMATCH)
@@ -1408,37 +1435,10 @@ DWORD mac_verify_changed_certificate_ex(freerdp *instance, const char *host, UIN
                                         const char *old_subject, const char *old_issuer,
                                         const char *old_fingerprint, DWORD flags)
 {
-	mfContext *mfc = (mfContext *)instance->context;
-	MRDPView *view = (MRDPView *)mfc->view;
-	CertificateDialog *dialog = [CertificateDialog new];
-	const char *type = "RDP-Server";
-	char hostname[8192];
-
-	if (flags & VERIFY_CERT_FLAG_GATEWAY)
-		type = "RDP-Gateway";
-
-	if (flags & VERIFY_CERT_FLAG_REDIRECT)
-		type = "RDP-Redirect";
-
-	sprintf_s(hostname, sizeof(hostname), "%s %s:%" PRIu16, type, host, port);
-	dialog.serverHostname = [NSString stringWithCString:hostname encoding:NSUTF8StringEncoding];
-	dialog.commonName = [NSString stringWithCString:common_name encoding:NSUTF8StringEncoding];
-	dialog.subject = [NSString stringWithCString:subject encoding:NSUTF8StringEncoding];
-	dialog.issuer = [NSString stringWithCString:issuer encoding:NSUTF8StringEncoding];
-	dialog.fingerprint = [NSString stringWithCString:fingerprint encoding:NSUTF8StringEncoding];
-
-	if (flags & VERIFY_CERT_FLAG_MISMATCH)
-		dialog.hostMismatch = TRUE;
-
-	if (flags & VERIFY_CERT_FLAG_CHANGED)
-		dialog.changed = TRUE;
-
-	[dialog performSelectorOnMainThread:@selector(runModal:)
-	                         withObject:[view window]
-	                      waitUntilDone:TRUE];
-	const DWORD result = dialog.result;
-	[dialog release];
-	return result;
+	// A saved identity change requires out-of-band investigation, never an in-session overwrite.
+	(void)instance; (void)host; (void)port; (void)common_name; (void)subject; (void)issuer;
+	(void)fingerprint; (void)old_subject; (void)old_issuer; (void)old_fingerprint; (void)flags;
+	return 0;
 }
 
 int mac_logon_error_info(freerdp *instance, UINT32 data, UINT32 type)
@@ -1452,77 +1452,50 @@ int mac_logon_error_info(freerdp *instance, UINT32 data, UINT32 type)
 
 BOOL mf_Pointer_New(rdpContext *context, rdpPointer *pointer)
 {
-	rdpGdi *gdi;
-	NSRect rect;
-	NSImage *image;
-	NSPoint hotSpot;
-	NSCursor *cursor;
-	BYTE *cursor_data;
-	NSMutableArray *ma;
-	NSBitmapImageRep *bmiRep;
-	MRDPCursor *mrdpCursor = [[MRDPCursor alloc] init];
+	if (!context || !pointer)
+		return FALSE;
 	mfContext *mfc = (mfContext *)context;
-	MRDPView *view;
-	UINT32 format;
-
-	if (!mfc || !context || !pointer)
+	MRDPView *view = (MRDPView *)mfc->view;
+	if (!context->gdi || !view || !view->cursors || pointer->width == 0 || pointer->height == 0 ||
+	    pointer->width > 384 || pointer->height > 384)
 		return FALSE;
 
-	view = (MRDPView *)mfc->view;
-	gdi = context->gdi;
-
-	if (!gdi || !view)
+	MRDPCursor *owned = [[MRDPCursor alloc] init];
+	if (!owned)
 		return FALSE;
-
-	rect.size.width = pointer->width;
-	rect.size.height = pointer->height;
-	rect.origin.x = pointer->xPos;
-	rect.origin.y = pointer->yPos;
-	cursor_data = (BYTE *)malloc(rect.size.width * rect.size.height * 4);
-
-	if (!cursor_data)
-		return FALSE;
-
-	mrdpCursor->cursor_data = cursor_data;
-	format = PIXEL_FORMAT_RGBA32;
-
-	if (!freerdp_image_copy_from_pointer_data(cursor_data, format, 0, 0, 0, pointer->width,
-	                                          pointer->height, pointer->xorMaskData,
-	                                          pointer->lengthXorMask, pointer->andMaskData,
-	                                          pointer->lengthAndMask, pointer->xorBpp, nullptr))
+	// Let the bitmap own its planes. NSCursor/AppKit may retain the image after
+	// the protocol cache releases its entry, so external malloc planes are unsafe.
+	owned->bmiRep = [[NSBitmapImageRep alloc]
+	    initWithBitmapDataPlanes:NULL pixelsWide:pointer->width pixelsHigh:pointer->height
+	    bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+	    colorSpaceName:NSDeviceRGBColorSpace bitmapFormat:0
+	    bytesPerRow:pointer->width * 4 bitsPerPixel:32];
+	if (!owned->bmiRep || ![owned->bmiRep bitmapData] ||
+	    !freerdp_image_copy_from_pointer_data([owned->bmiRep bitmapData], PIXEL_FORMAT_RGBA32,
+	        (UINT32)[owned->bmiRep bytesPerRow], 0, 0, pointer->width, pointer->height,
+	        pointer->xorMaskData, pointer->lengthXorMask, pointer->andMaskData,
+	        pointer->lengthAndMask, pointer->xorBpp, nullptr))
 	{
-		free(cursor_data);
-		mrdpCursor->cursor_data = nullptr;
+		[owned release];
 		return FALSE;
 	}
-
-	/* store cursor bitmap image in representation - required by NSImage */
-	bmiRep = [[NSBitmapImageRep alloc]
-	    initWithBitmapDataPlanes:(unsigned char **)&cursor_data
-	                  pixelsWide:rect.size.width
-	                  pixelsHigh:rect.size.height
-	               bitsPerSample:8
-	             samplesPerPixel:4
-	                    hasAlpha:YES
-	                    isPlanar:NO
-	              colorSpaceName:NSDeviceRGBColorSpace
-	                bitmapFormat:0
-	                 bytesPerRow:rect.size.width * FreeRDPGetBytesPerPixel(format)
-	                bitsPerPixel:0];
-	mrdpCursor->bmiRep = bmiRep;
-	/* create an image using above representation */
-	image = [[NSImage alloc] initWithSize:[bmiRep size]];
-	[image addRepresentation:bmiRep];
-	mrdpCursor->nsImage = image;
-	/* need hotspot to create cursor */
-	hotSpot.x = pointer->xPos;
-	hotSpot.y = pointer->yPos;
-	cursor = [[NSCursor alloc] initWithImage:image hotSpot:hotSpot];
-	mrdpCursor->nsCursor = cursor;
-	mrdpCursor->pointer = pointer;
-	/* save cursor for later use in mf_Pointer_Set() */
-	ma = view->cursors;
-	[ma addObject:mrdpCursor];
+	owned->nsImage = [[NSImage alloc] initWithSize:[owned->bmiRep size]];
+	if (!owned->nsImage)
+	{
+		[owned release];
+		return FALSE;
+	}
+	[owned->nsImage addRepresentation:owned->bmiRep];
+	owned->nsCursor = [[NSCursor alloc] initWithImage:owned->nsImage
+	    hotSpot:NSMakePoint(pointer->xPos, pointer->yPos)];
+	if (!owned->nsCursor)
+	{
+		[owned release];
+		return FALSE;
+	}
+	owned->pointer = pointer;
+	[view->cursors addObject:owned];
+	[owned release];
 	return TRUE;
 }
 
@@ -1536,10 +1509,6 @@ void mf_Pointer_Free(rdpContext *context, rdpPointer *pointer)
 	{
 		if (cursor->pointer == pointer)
 		{
-			cursor->nsImage = nil;
-			cursor->nsCursor = nil;
-			cursor->bmiRep = nil;
-			free(cursor->cursor_data);
 			[ma removeObject:cursor];
 			return;
 		}

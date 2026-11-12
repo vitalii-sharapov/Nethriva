@@ -11,6 +11,9 @@ private struct RemoteTreeDragPayload: Codable {
 
 struct SSHFileTreeView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var recovery: SessionRecovery
+    @EnvironmentObject private var settings: AppSettings
+    @Environment(\.sessionLifetime) private var lifetime
     @StateObject private var model: SSHFileTreeModel
 
     let connection: RemoteConnection
@@ -70,12 +73,23 @@ struct SSHFileTreeView: View {
             }
 
             Divider()
+            SFTPTransferQueueView(queue: model.transfers)
             statusBar
+        }
+        .onDisappear { if lifetime == nil { model.close() } }
+        .onChange(of: recovery.suspended) { _, suspended in
+            if suspended { model.suspend() } else { model.transfers.resume() }
+        }
+        .onChange(of: recovery.epoch) { _, _ in
+            if settings.recoverNetworkSessions { Task { await model.refresh() } }
         }
         .frame(minWidth: 220, idealWidth: 270, maxWidth: 420, maxHeight: .infinity)
         .task {
+            lifetime?.own("ssh-files") { [model = model] in model.close() }
             do {
-                await model.start(password: try appState.password(for: connection))
+                let password = try await appState.sessionPassword(for: connection)
+                try Task.checkCancellation(); _ = try appState.credentialGate.check()
+                await model.start(password: password)
             } catch {
                 model.errorMessage = "Could not read the saved password: \(error.localizedDescription)"
             }
@@ -224,6 +238,8 @@ struct SSHFileTreeView: View {
 }
 
 private struct SSHFileTreeNodeView: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var editors: RemoteFileEditors
     @ObservedObject var node: SSHFileTreeNode
     @ObservedObject var model: SSHFileTreeModel
     let depth: Int
@@ -313,6 +329,9 @@ private struct SSHFileTreeNodeView: View {
             model.acceptDrop(providers, into: node.item.path)
         }
         .contextMenu {
+            if !node.item.isDirectory, !node.item.isSymbolicLink {
+                Button("Edit Remote File…") { editors.open(item: node.item, connection: model.connection, appState: appState) }
+            }
             if node.item.isDirectory {
                 Button("Open as Root") {
                     Task { await model.open(path: node.item.path) }
@@ -394,17 +413,21 @@ private final class SSHFileTreeModel: ObservableObject {
     @Published var activityText = "Connecting…"
     @Published var errorMessage: String?
 
-    private let connection: RemoteConnection
+    let connection: RemoteConnection
     private let service = SFTPService()
+    let transfers: SFTPTransferQueue
     private var password: String?
     private var hasStarted = false
 
     init(connection: RemoteConnection) {
         self.connection = connection
+        transfers = SFTPTransferQueue(connection: connection)
     }
 
     func start(password: String?) async {
         self.password = password
+        transfers.configure(password: password)
+        transfers.onUploadFinished = { [weak self] in await self?.refresh() }
         guard !hasStarted else { return }
         hasStarted = true
         await open(path: ".")
@@ -428,7 +451,7 @@ private final class SSHFileTreeModel: ObservableObject {
     }
 
     func toggle(_ node: SSHFileTreeNode) async {
-        guard node.item.isDirectory else { return }
+        guard node.item.isDirectory, !node.isLoading else { return }
         node.isExpanded.toggle()
         guard node.isExpanded, node.children == nil else { return }
         await loadChildren(of: node)
@@ -437,27 +460,15 @@ private final class SSHFileTreeModel: ObservableObject {
     func upload(localURLs: [URL], to remoteDirectory: String) async {
         let urls = localURLs.filter(\.isFileURL)
         guard !urls.isEmpty else { return }
-        await perform("Uploading \(urls.count) item\(urls.count == 1 ? "" : "s")…") {
-            try await service.upload(
-                localURLs: urls,
-                to: remoteDirectory,
-                connection: connection,
-                password: password
-            )
-            try await reload(directory: remoteDirectory)
-        }
+        transfers.upload(urls, to: remoteDirectory)
     }
 
     func download(item: SFTPFileItem, to localURL: URL) async {
-        await perform("Downloading \(item.name)…") {
-            try await service.download(
-                item: item,
-                to: localURL,
-                connection: connection,
-                password: password
-            )
-        }
+        transfers.download(item, to: localURL)
     }
+
+    func suspend() { service.close(); transfers.suspend() }
+    func close() { service.close(); transfers.close(); password = nil }
 
     func createDirectory(named name: String, in remoteDirectory: String) async {
         await perform("Creating folder…") {
@@ -586,7 +597,7 @@ private final class SSHFileTreeModel: ObservableObject {
             node.children = listing.items.map(SSHFileTreeNode.init)
         } catch {
             node.isExpanded = false
-            errorMessage = error.localizedDescription
+            if !(error is CancellationError) { errorMessage = (error as? SFTPServiceError)?.localizedDescription ?? "The directory could not be loaded. Refresh and retry." }
         }
     }
 
@@ -639,7 +650,7 @@ private final class SSHFileTreeModel: ObservableObject {
         do {
             try await operation()
         } catch {
-            errorMessage = error.localizedDescription
+            if !(error is CancellationError) { errorMessage = (error as? SFTPServiceError)?.localizedDescription ?? "The file operation could not finish. Refresh and retry." }
         }
     }
 

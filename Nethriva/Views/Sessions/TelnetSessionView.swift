@@ -6,16 +6,21 @@ import SwiftUI
 struct TelnetSessionView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recovery: SessionRecovery
     @StateObject private var inputController = TelnetInputController()
+    @Environment(\.sessionLifetime) private var lifetime
 
     let connection: RemoteConnection
 
     @State private var sessionID = UUID()
     @State private var status: TelnetSessionStatus = .connecting
     @State private var credentialError: String?
+    @State private var recoveryPending = false
+    @State private var credentialTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
+        let generation = sessionID
+        return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Label("Telnet", systemImage: "network")
                     .font(.headline)
@@ -25,6 +30,11 @@ struct TelnetSessionView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                ConnectionCheckButton(connection: connection).labelStyle(.iconOnly)
+                Text(status == .connected ? "Connected" : status == .connecting ? "Connecting" : "Disconnected").font(.caption).foregroundStyle(.secondary)
+                if status == .connecting || status == .connected {
+                    Button("Disconnect") { recoveryPending = false; inputController.disconnect(); status = .ended("Telnet session disconnected.") }
+                } else { Button("Reconnect", action: reconnect) }
             }
             .padding(.horizontal, 14)
             .frame(height: 36)
@@ -35,7 +45,7 @@ struct TelnetSessionView: View {
                 TelnetTerminalSurface(
                     connection: connection,
                     inputController: inputController,
-                    onStatus: { status = $0 }
+                    onStatus: { if generation == sessionID { status = $0 } }
                 )
                 .id(sessionID)
 
@@ -52,8 +62,7 @@ struct TelnetSessionView: View {
                             Text(message)
                                 .font(.callout)
                             Button("Reconnect") {
-                                status = .connecting
-                                sessionID = UUID()
+                                reconnect()
                             }
                         }
                         .padding(.horizontal, 14)
@@ -66,6 +75,12 @@ struct TelnetSessionView: View {
             }
         }
         .onAppear(perform: loadSavedPassword)
+        .onChange(of: recovery.suspended) { _, suspended in
+            if suspended, status == .connected || status == .connecting { recoveryPending = true; inputController.disconnect(); status = .ended("Network interrupted. Reconnect when ready.") }
+        }
+        .onChange(of: recovery.epoch) { _, _ in
+            if recoveryPending, settings.recoverNetworkSessions { reconnect() }
+        }
     }
 
     private var passwordBanner: some View {
@@ -108,14 +123,20 @@ struct TelnetSessionView: View {
     }
 
     private func loadSavedPassword() {
+        credentialTask?.cancel()
         inputController.setSavedUsername(connection.username)
-        do {
-            inputController.setSavedPassword(try appState.password(for: connection))
-            credentialError = nil
-        } catch {
-            credentialError = "Could not read the saved password: \(error.localizedDescription)"
+        inputController.setSavedPassword(nil)
+        credentialTask = Task {
+            do {
+                let password = try await appState.sessionPassword(for: connection)
+                try Task.checkCancellation()
+                inputController.setSavedPassword(password); credentialError = nil
+            } catch { credentialError = "Could not read the saved password: \(error.localizedDescription)" }
         }
+        let task = credentialTask
+        lifetime?.own("credential-fetch") { task?.cancel(); inputController.setSavedPassword(nil) }
     }
+    private func reconnect() { recoveryPending = false; loadSavedPassword(); status = .connecting; sessionID = UUID() }
 }
 
 private enum TelnetSessionStatus: Equatable {
@@ -134,35 +155,45 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> TerminalView {
-        let terminalView = PasteableNetworkTerminalView(frame: .zero)
+        let terminalView = PasteableNetworkTerminalView(frame: .zero, options: context.environment.terminalAppearance.options)
+        context.environment.terminalAppearance.apply(terminalView)
+        context.coordinator.capture = TerminalCapture(view: terminalView, id: context.environment.sessionTabID, experience: context.environment.terminalExperience)
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.attach(terminalView)
+        context.environment.sessionLifetime?.focus = { [weak terminalView] in if let terminalView { terminalView.window?.makeFirstResponder(terminalView) } }
+        context.environment.commandRouter?.register(context.environment.sessionTabID, identity: terminalView, ready: { [weak inputController] in inputController?.canInsert == true }) { [weak inputController] in inputController?.insert($0) ?? false }
         terminalView.feed(text: "Connecting with Telnet…\r\n")
         terminalView.feed(text: "Warning: Telnet traffic is not encrypted.\r\n")
         context.coordinator.connect(host: connection.host, port: connection.port)
 
-        DispatchQueue.main.async {
+        context.coordinator.focus.update(context.environment.sessionIsActive) {
             terminalView.window?.makeFirstResponder(terminalView)
         }
         return terminalView
     }
 
     func updateNSView(_ terminalView: TerminalView, context: Context) {
+        context.environment.commandRouter?.register(context.environment.sessionTabID, identity: terminalView, ready: { [weak inputController] in inputController?.canInsert == true }) { [weak inputController] in inputController?.insert($0) ?? false }
         context.coordinator.onStatus = onStatus
+        context.coordinator.focus.update(context.environment.sessionIsActive) { terminalView.window?.makeFirstResponder(terminalView) }
     }
 
     static func dismantleNSView(_ terminalView: TerminalView, coordinator: Coordinator) {
         terminalView.terminalDelegate = nil
+        coordinator.capture?.close()
         coordinator.close()
     }
 
     final class Coordinator: NSObject, TerminalViewDelegate {
+        var capture: TerminalCapture?
+        let focus = SessionFocusGate()
         var onStatus: (TelnetSessionStatus) -> Void
 
         private let inputController: TelnetInputController
         private let queue = DispatchQueue(label: "com.vitalii.nethriva.telnet")
         private var connection: NWConnection?
         private var parser = TelnetProtocolParser()
+        private var outputLimiter = TerminalEscapeLimiter()
         private weak var terminalView: TerminalView?
         private var promptTail = ""
 
@@ -179,6 +210,7 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
             inputController.attach(to: terminalView, sender: { [weak self] bytes in
                 self?.send(bytes)
             })
+            inputController.disconnector = { [weak self] in self?.close() }
         }
 
         func connect(host: String, port: Int) {
@@ -212,6 +244,7 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
         }
 
         func close() {
+            DispatchQueue.main.async { [weak self] in self?.capture?.close() }
             connection?.stateUpdateHandler = nil
             connection?.cancel()
             connection = nil
@@ -230,6 +263,7 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
 
         func setTerminalTitle(source: TerminalView, title: String) {}
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { TerminalLinkSecurity.open(link) }
         func scrolled(source: TerminalView, position: Double) {}
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 
@@ -267,9 +301,11 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
                         self.sendRaw(response)
                     }
                     if !result.display.isEmpty {
-                        let text = String(decoding: result.display, as: UTF8.self)
+                        let bounded = self.outputLimiter.filter(result.display[...])
+                        let text = String(decoding: bounded.suffix(160), as: UTF8.self)
                         DispatchQueue.main.async {
-                            self.terminalView?.feed(byteArray: result.display[...])
+                            self.terminalView?.feed(byteArray: bounded[...])
+                            self.capture?.output(bounded[...])
                             self.observePrompt(text)
                         }
                     }
@@ -299,6 +335,8 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
 
         private func publish(_ status: TelnetSessionStatus) {
             DispatchQueue.main.async { [weak self] in
+                if case .ended = status { self?.capture?.close() }
+                self?.inputController.ready = status == .connected
                 self?.onStatus(status)
             }
         }
@@ -314,6 +352,7 @@ private struct TelnetTerminalSurface: NSViewRepresentable {
 }
 
 private final class PasteableNetworkTerminalView: TerminalView {
+    override func paste(_ sender: Any) { TerminalInputSecurity.paste(into: self) }
     override func rightMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         paste(self)
@@ -321,19 +360,27 @@ private final class PasteableNetworkTerminalView: TerminalView {
 }
 
 private final class TelnetInputController: ObservableObject {
+    var canInsert: Bool { !CredentialAccessGate.shared.isLocked && ready && !isAwaitingUsername && !isAwaitingPassword && sender != nil }
     @Published private(set) var isAwaitingUsername = false
     @Published private(set) var isAwaitingPassword = false
     private var savedUsername: String?
     private var savedPassword: String?
     private weak var terminalView: TerminalView?
     private var sender: (([UInt8]) -> Void)?
+    var ready = false
+    func insert(_ text: String) -> Bool {
+        guard canInsert, let sender else { return false }
+        sender(Array(text.utf8)); return true
+    }
+    var disconnector: (() -> Void)?
+    func disconnect() { disconnector?() }
 
     var hasSavedUsername: Bool {
         !(savedUsername?.isEmpty ?? true)
     }
 
     func setSavedUsername(_ username: String?) {
-        savedUsername = username
+        savedUsername = username.flatMap { $0.utf8.count <= 4096 && $0.rangeOfCharacter(from: .controlCharacters) == nil ? $0 : nil }
     }
 
     var hasSavedPassword: Bool {
@@ -341,7 +388,7 @@ private final class TelnetInputController: ObservableObject {
     }
 
     func setSavedPassword(_ password: String?) {
-        savedPassword = password
+        savedPassword = password.flatMap { $0.utf8.count <= 65536 && $0.rangeOfCharacter(from: .controlCharacters) == nil ? $0 : nil }
     }
 
     func attach(to terminalView: TerminalView, sender: @escaping ([UInt8]) -> Void) {
@@ -352,21 +399,23 @@ private final class TelnetInputController: ObservableObject {
     }
 
     func detach() {
+        ready = false
         terminalView = nil
         sender = nil
+        disconnector = nil
         isAwaitingUsername = false
         isAwaitingPassword = false
     }
 
     func sendSavedUsername() {
-        guard let savedUsername, !savedUsername.isEmpty else { return }
+        guard !CredentialAccessGate.shared.isLocked, isAwaitingUsername, let savedUsername, !savedUsername.isEmpty else { return }
         sender?(Array((savedUsername + "\r").utf8))
         isAwaitingUsername = false
         if let terminalView { terminalView.window?.makeFirstResponder(terminalView) }
     }
 
     func sendSavedPassword() {
-        guard let savedPassword, !savedPassword.isEmpty else { return }
+        guard !CredentialAccessGate.shared.isLocked, isAwaitingPassword, let savedPassword, !savedPassword.isEmpty else { return }
         sender?(Array((savedPassword + "\r").utf8))
         isAwaitingPassword = false
         if let terminalView {
@@ -394,6 +443,7 @@ private final class TelnetInputController: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.isAwaitingUsername = false
             self?.isAwaitingPassword = false
+            self?.savedUsername = nil; self?.savedPassword = nil
         }
     }
 }

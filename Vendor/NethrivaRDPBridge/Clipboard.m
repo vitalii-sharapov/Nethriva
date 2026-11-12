@@ -219,6 +219,8 @@ static UINT mac_cliprdr_server_format_list(CliprdrClientContext *cliprdr,
 	if (formatList->numFormats < 1)
 		return CHANNEL_RC_OK;
 
+	if (formatList->numFormats > 4096)
+		return ERROR_INVALID_DATA;
 	mfc->numServerFormats = formatList->numFormats;
 	mfc->serverFormats = (CLIPRDR_FORMAT *)calloc(mfc->numServerFormats, sizeof(CLIPRDR_FORMAT));
 
@@ -403,6 +405,12 @@ mac_cliprdr_server_format_data_response(CliprdrClientContext *cliprdr,
 		formatId = format->formatId;
 
 	const size_t size = formatDataResponse->common.dataLen;
+	if (size > 16 * 1024 * 1024 ||
+	    (((formatId == CF_TEXT) || (formatId == CF_OEMTEXT) || (formatId == CF_UNICODETEXT)) && size > 1024 * 1024))
+	{
+		(void)SetEvent(mfc->clipboardRequestEvent);
+		return ERROR_INVALID_DATA;
+	}
 
 	ClipboardSetData(mfc->clipboard, formatId, formatDataResponse->requestedFormatData, size);
 
@@ -443,6 +451,8 @@ mac_cliprdr_server_format_data_response(CliprdrClientContext *cliprdr,
 		if (str)
 		{
 			dispatch_async(dispatch_get_main_queue(), ^{
+				if (![view.window isKeyWindow] || view.isHiddenOrHasHiddenAncestor || view.window.firstResponder != view)
+					return;
 				NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 				[pasteboard clearContents];
 				[pasteboard setString:str forType:NSPasteboardTypeString];

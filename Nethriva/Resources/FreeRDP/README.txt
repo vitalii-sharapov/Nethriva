@@ -1,11 +1,14 @@
 Nethriva bundled RDP runtime
 
-FreeRDP version: 3.31.1
-Architecture: Apple silicon (arm64)
+FreeRDP / WinPR version: 3.33.1
+OpenSSL version: 4.1.0
+Architecture: Apple silicon arm64; M1 CPU baseline
 Minimum macOS version: 14.0
 Clients: embedded Cocoa NSView bridge and SDL3 diagnostic fallback
 
-This self-contained runtime was built from the official FreeRDP 3.31.1
-source using the upstream macOS bundle layout. The Nethriva bridge uses the
-official FreeRDP macOS client implementation and exposes it to Swift as an
-in-process NSView. Third-party license texts are included in ThirdPartyLicenses.
+Sources and exact hashes: scripts/native-runtime.lock.json in the source repository.
+Native component versions and source hashes: SBOM.cdx.json.
+Build settings, bridge-source hashes and binary hashes: PROVENANCE.json.
+Recorded patches bound graphics allocations per surface/session and correct optional SDL event labels. See the source lock and patch hashes.
+All runtime libraries are built from pinned sources, relocated to this bundle, and ad-hoc signed.
+This does not provide Developer ID signing, notarization or live-server acceptance.

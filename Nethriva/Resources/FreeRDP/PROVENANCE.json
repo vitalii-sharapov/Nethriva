@@ -1,0 +1,77 @@
+{
+  "toolchain": {
+    "xcode": "Xcode 27.2\nBuild version 27B52",
+    "sdk": "27.2"
+  },
+  "schema": 1,
+  "architecture": "arm64",
+  "cpuBaseline": "apple-m1",
+  "minimumMacOS": "14.0",
+  "versions": {
+    "FreeRDP": "3.33.1",
+    "OpenSSL": "4.1.0",
+    "SDL3": "3.4.20",
+    "SDL3_ttf": "3.2.2",
+    "zlib": "1.4",
+    "json-c": "0.19",
+    "uriparser": "1.0.3",
+    "FreeType": "2.15.0",
+    "FDK-AAC": "3.0.0",
+    "OpenH264": "2.7.0",
+    "Opus": "1.6.1",
+    "libusb": "1.0.30",
+    "WinPR": "3.33.1"
+  },
+  "sourceLockSHA256": "5d8946aed474be931cf6581fa2ea54ee32324257a5d384b72629afbbe500cf5a",
+  "patches": [
+    "freerdp-3.33.1-gfx-budgets.patch"
+  ],
+  "patchHashes": {
+    "freerdp-3.33.1-gfx-budgets.patch": "7d4dfc748327ac38b86aacf25623a70af03b427dcba655b2ca70f657fab3d22a"
+  },
+  "bridgeSourcesSHA256": {
+    "Vendor/NethrivaRDPBridge/CertificateDialog.h": "5c25e0384b3e06f8b9a399f39cea96163cfb77622055d40032399988fae7ea76",
+    "Vendor/NethrivaRDPBridge/CertificateDialog.m": "b81fb75e54e590b6231e7f07890972e62f3ac20e9ab2555a888fe67446b6b796",
+    "Vendor/NethrivaRDPBridge/Clipboard.h": "298544f5984cc4ea3e22cdff4020ed22403bec71a8c68388d96483abb732319f",
+    "Vendor/NethrivaRDPBridge/Clipboard.m": "323445d7ce4262d63d7da39bbf83b90241a31e90e7f39272d7eaa7eca766e25c",
+    "Vendor/NethrivaRDPBridge/Keyboard.h": "dd997dd2ac2b5927d766755e370855ee07817ff0efc89ede36dec2f0b65a68d2",
+    "Vendor/NethrivaRDPBridge/Keyboard.m": "d40781b39d5b7f0e473de61b13f423712a9e9faa013995c31c5540e2dbdb58f8",
+    "Vendor/NethrivaRDPBridge/MRDPCursor.h": "6565dc9d9aa8891b8fa58b622534660732d2fd7889c5db03a6fd9d1333c3f550",
+    "Vendor/NethrivaRDPBridge/MRDPCursor.m": "a825ca1c3d1707a49840cbb8e8a3956cf14673a55d6785bf34f8263f1870ae7a",
+    "Vendor/NethrivaRDPBridge/MRDPView.h": "fd1db65d8503c93a41f712f471ea091a13529d8e1f5316c4ce6260bac07accaf",
+    "Vendor/NethrivaRDPBridge/MRDPView.m": "eca46aa7df0ab934e9a4fbd5fa92dcb52002f6cdddad1eba0943e94f465a43bd",
+    "Vendor/NethrivaRDPBridge/NethrivaRDPBridge.m": "86f818580bd3fa5d9278772d54660a460d6d6516970f55aaf01ed19d74b443c4",
+    "Vendor/NethrivaRDPBridge/PasswordDialog.h": "963c91a30515053025f255c6e2b4041bb664d59496768ea0391ef75d2e5df735",
+    "Vendor/NethrivaRDPBridge/PasswordDialog.m": "51036f5b4a2d0cac2558b6ec18c463179e1c0240bfa6d69aff0c987423c178a5",
+    "Vendor/NethrivaRDPBridge/mf_client.h": "ea5294707e9ea4717ce51ea2462b6d856e93e8662f34c163e3d9d4f638c9b587",
+    "Vendor/NethrivaRDPBridge/mf_client.m": "0340d21d64a487df4720aa455ffb4ddf281ed0c612f2cffa91aa8f5875362763",
+    "Vendor/NethrivaRDPBridge/mfreerdp.h": "855f72592081c9e8499a022a2bad868d226adb70ac34cac1606e3ac5e825eaea"
+  },
+  "buildFlags": [
+    "-arch arm64",
+    "-mcpu=apple-m1",
+    "-mmacosx-version-min=14.0",
+    "-fstack-protector-strong"
+  ],
+  "verification": "HTTPS official upstream release sources, pinned source SHA-256; detached PGP signatures not locally verified",
+  "nativeFiles": {
+    "Frameworks/libNethrivaRDP.dylib": "17914379e26cbd4c6d1ace43c5ee381e2b7ab2f201b21e5627ed9ced7373ef1b",
+    "Frameworks/libSDL3.0.dylib": "921dab71aa89f78d612e74dff3dd5d2207db66f9115671acd20414c61d29a7d9",
+    "Frameworks/libSDL3_ttf.0.2.2.dylib": "06769e6d584be50efc663a14cba30429bc6ba2159ca9703c4bb21ac0e92b2bf2",
+    "Frameworks/libcrypto.4.dylib": "183f44a759042f7a8a66ab0d1fa71870640439dfa9a889d044c5bcd987032f3e",
+    "Frameworks/libfdk-aac.2.0.4.dylib": "8ecc5520c9b583aee1345088f95fa58804ca7747b759a17b401424a45e53a758",
+    "Frameworks/libfreerdp-client3.3.33.1.dylib": "a55f227988abbb60f97f10ec3ad26760e28d9c994f93853f5afc07fb4d449015",
+    "Frameworks/libfreerdp3.3.33.1.dylib": "5c54f65cb4414b36bb817c39b90c549ec7aa462674e33cb520302f26b8d0d7a3",
+    "Frameworks/libfreetype.6.20.7.dylib": "b14ab257f79d77e35de25953cdecc907f90350e2f20778ec85ee3443be5354af",
+    "Frameworks/libjson-c.5.5.0.dylib": "dd8a43fa004a0d8e93f269aadc5de8b1b7ca1e16efd8a9388c2862d96a0487f2",
+    "Frameworks/libopenh264.2.7.0.dylib": "f78d1566ba667d4b4774f57dc7f276e250aa287a1eb842dbfa3082258c5bc947",
+    "Frameworks/libopus.0.11.1.dylib": "92a21a55f0d8d76207e0df2e52ce40b8eba4f109cc980331365f78a41d73ed0c",
+    "Frameworks/libssl.4.dylib": "a21ffec2f508fc9528bbb55c74f52d06878fb34e42885b7b0016fa76d23114f2",
+    "Frameworks/liburiparser.1.2.3.dylib": "b6e5dff93230887545f51f67e16c1ec8953b78b3ece6e58a002d06ccc14f62cd",
+    "Frameworks/libusb-1.0.0.dylib": "7335fa92b1cd54ae7d3cd633f1b2cd2b3371f7228c8c80d679a03b8dd69d75bc",
+    "Frameworks/libwinpr3.3.33.1.dylib": "aea04fa1d3231d4329ed62f68639b91ffec16f8b283426ad079f0a97b2dbdce1",
+    "Frameworks/libz.1.4.dylib": "0beacb81f7b92da9a768861f424fd8335af4f152fd8a68463d93a7d48465a886",
+    "Frameworks/ossl-modules/legacy.dylib": "ddddc7faf3fc88e3f9074fa47f5abd1e987aad91cb1e1eab298b8e45dc2e228e",
+    "MacOS/sdl-freerdp": "77225db9a94abc1c4fcdb805d7f535650bca185cf6267b08bcb955c0ef0688af"
+  }
+}

@@ -4,6 +4,12 @@
 #import <freerdp/client/cmdline.h>
 #import <openssl/provider.h>
 #import <openssl/crypto.h>
+#import <openssl/pem.h>
+#import <openssl/ssl.h>
+#import <Security/Security.h>
+#import <sys/stat.h>
+#import <fcntl.h>
+#import <unistd.h>
 #import <winpr/crt.h>
 
 #import "MRDPView.h"
@@ -16,7 +22,94 @@ typedef struct
 	MRDPView *view;
 	int argc;
 	char **argv;
+	char *configPath;
 } NethrivaRDPSession;
+
+// Bounded, memory-only certificate handling; trust comes from macOS, not a build-machine CA path.
+__attribute__((visibility("default"))) int NethrivaRDPVerifySystemCertificate(
+    const BYTE *data, size_t length, const char *hostname)
+{
+    if (!data || length == 0 || length > 1024 * 1024 || !hostname ||
+        strnlen(hostname, 1025) == 0 || strnlen(hostname, 1025) > 1024)
+        return 0;
+    CFStringRef name = CFStringCreateWithCString(NULL, hostname, kCFStringEncodingUTF8);
+    if (!name) return 0;
+    SecPolicyRef policy = SecPolicyCreateSSL(true, name);
+    CFRelease(name);
+    if (!policy) return 0;
+    BIO *input = BIO_new_mem_buf(data, (int)length);
+    CFMutableArrayRef certificates = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+    int result = 0;
+    if (!input || !certificates) goto cleanup;
+    while (BIO_ctrl_pending(input) > 0 && CFArrayGetCount(certificates) < 32)
+    {
+        char *unread = NULL;
+        long unreadCount = BIO_get_mem_data(input, &unread);
+        BOOL whitespace = unreadCount > 0;
+        for (long index = 0; index < unreadCount; index++)
+            if (unread[index] != ' ' && unread[index] != '\t' && unread[index] != '\r' && unread[index] != '\n')
+                { whitespace = NO; break; }
+        if (whitespace)
+        {
+            char discard[256];
+            while (BIO_read(input, discard, sizeof(discard)) > 0) {}
+            break;
+        }
+        X509 *certificate = PEM_read_bio_X509(input, NULL, NULL, NULL);
+        if (!certificate) goto cleanup;
+        unsigned char *der = NULL;
+        int count = i2d_X509(certificate, &der);
+        X509_free(certificate);
+        if (count <= 0 || !der) { OPENSSL_free(der); goto cleanup; }
+        CFDataRef bytes = CFDataCreate(NULL, der, count);
+        OPENSSL_free(der);
+        SecCertificateRef native = bytes ? SecCertificateCreateWithData(NULL, bytes) : NULL;
+        if (bytes) CFRelease(bytes);
+        if (!native) goto cleanup;
+        CFArrayAppendValue(certificates, native);
+        CFRelease(native);
+    }
+    if (CFArrayGetCount(certificates) == 0 || BIO_ctrl_pending(input) > 0) goto cleanup;
+    {
+        SecTrustRef trust = NULL;
+        if (SecTrustCreateWithCertificates(certificates, policy, &trust) == errSecSuccess && trust)
+        {
+            // Do not fetch attacker-controlled AIA/OCSP endpoints while verifying a peer.
+            if (SecTrustSetNetworkFetchAllowed(trust, false) == errSecSuccess)
+                result = SecTrustEvaluateWithError(trust, NULL) ? 1 : 0;
+            CFRelease(trust);
+        }
+    }
+cleanup:
+    if (input) BIO_free(input);
+    if (certificates) CFRelease(certificates);
+    CFRelease(policy);
+    return result;
+}
+
+static int NethrivaRDPVerifyX509(freerdp *instance, const BYTE *data, size_t length,
+                                const char *hostname, UINT16 port, DWORD flags)
+{
+    (void)instance; (void)port; (void)flags;
+    return NethrivaRDPVerifySystemCertificate(data, length, hostname);
+}
+
+__attribute__((visibility("default"))) int NethrivaRDPSetConfigPath(void *opaqueSession, const char *path)
+{
+    NethrivaRDPSession *session = opaqueSession;
+    if (!session || session->context || !path || path[0] != '/' || strnlen(path, 4097) > 4096) return 0;
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return 0;
+    struct stat info;
+    BOOL safe = fstat(fd, &info) == 0 && S_ISDIR(info.st_mode) && info.st_uid == geteuid() &&
+                (info.st_mode & 077) == 0 && (info.st_mode & 0700) == 0700;
+    close(fd);
+    if (!safe) return 0;
+    char *copy = strdup(path);
+    if (!copy) return 0;
+    free(session->configPath); session->configPath = copy;
+    return 1;
+}
 
 static OSSL_PROVIDER *NethrivaDefaultProvider = NULL;
 static OSSL_PROVIDER *NethrivaLegacyProvider = NULL;
@@ -70,6 +163,7 @@ __attribute__((visibility("default"))) int NethrivaRDPStart(
 	NethrivaRDPSession *session = opaqueSession;
 	if (!session || !session->view || argumentCount < 0)
 		return -1;
+	if (!session->configPath) return -9;
 
 	RDP_CLIENT_ENTRY_POINTS entryPoints = WINPR_C_ARRAY_INIT;
 	entryPoints.Size = sizeof(RDP_CLIENT_ENTRY_POINTS);
@@ -80,6 +174,8 @@ __attribute__((visibility("default"))) int NethrivaRDPStart(
 	session->context = freerdp_client_context_new(&entryPoints);
 	if (!session->context)
 		return -3;
+	if (!freerdp_settings_set_string(session->context->settings, FreeRDP_ConfigPath, session->configPath))
+		return -9;
 
 	mfContext *macContext = (mfContext *)session->context;
 	macContext->view = session->view;
@@ -99,6 +195,20 @@ __attribute__((visibility("default"))) int NethrivaRDPStart(
 		session->context->settings, session->argc, session->argv, FALSE);
 	if (parseStatus < 0)
 		return parseStatus;
+	if (!freerdp_settings_set_uint16(session->context->settings, FreeRDP_TLSMinVersion, TLS1_2_VERSION))
+		return -10;
+	// First-use trust requires the existing explicit fingerprint dialog, never automatic acceptance.
+	if (freerdp_settings_get_bool(session->context->settings, FreeRDP_AutoAcceptCertificate))
+		freerdp_settings_set_bool(session->context->settings, FreeRDP_AutoAcceptCertificate, FALSE);
+	if (freerdp_settings_get_bool(session->context->settings, FreeRDP_AutoDenyCertificate))
+	{
+		session->context->instance->VerifyX509Certificate = NethrivaRDPVerifyX509;
+		freerdp_settings_set_bool(session->context->settings, FreeRDP_ExternalCertificateManagement, TRUE);
+	}
+	// Direct RDP routing does not need the account name in its pre-TLS mstshash cookie.
+	if (!freerdp_settings_get_bool(session->context->settings, FreeRDP_GatewayEnabled) &&
+	    freerdp_settings_get_uint32(session->context->settings, FreeRDP_LoadBalanceInfoLength) == 0)
+		freerdp_settings_set_uint32(session->context->settings, FreeRDP_CookieMaxLength, 0);
 
 	return freerdp_client_start(session->context);
 }
@@ -289,5 +399,6 @@ __attribute__((visibility("default"))) void NethrivaRDPDestroy(void *opaqueSessi
 	[session->view removeFromSuperview];
 	[session->view release];
 	NethrivaRDPFreeArguments(session);
+	free(session->configPath);
 	free(session);
 }

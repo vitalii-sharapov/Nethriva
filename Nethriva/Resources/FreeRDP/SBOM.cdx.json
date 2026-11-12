@@ -1,0 +1,342 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "serialNumber": "urn:uuid:1071428b-7cd0-4e31-8e44-99fd9908ec84",
+  "metadata": {
+    "timestamp": "2026-11-11T20:00:48.876108+00:00",
+    "component": {
+      "type": "application",
+      "name": "Nethriva native RDP runtime",
+      "version": "3.33.1"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/FreeRDP/FreeRDP@3.33.1",
+      "name": "FreeRDP",
+      "version": "3.33.1",
+      "purl": "pkg:github/FreeRDP/FreeRDP@3.33.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4431bbf04d370545cfe2924b9d9f116b95c90c64ff156b2550bbaf82d34e7124"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/FreeRDP/FreeRDP/releases/download/3.33.1/freerdp-3.33.1.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/openssl@4.1.0",
+      "name": "OpenSSL",
+      "version": "4.1.0",
+      "purl": "pkg:generic/openssl@4.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/libsdl-org/SDL@release-3.4.20",
+      "name": "SDL3",
+      "version": "3.4.20",
+      "purl": "pkg:github/libsdl-org/SDL@release-3.4.20",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/libsdl-org/SDL_ttf@release-3.2.2",
+      "name": "SDL3_ttf",
+      "version": "3.2.2",
+      "purl": "pkg:github/libsdl-org/SDL_ttf@release-3.2.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "63547d58d0185c833213885b635a2c0548201cc8f301e6587c0be1a67e1e045d"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libsdl-org/SDL_ttf/releases/download/release-3.2.2/SDL3_ttf-3.2.2.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/zlib@1.4",
+      "name": "zlib",
+      "version": "1.4",
+      "purl": "pkg:generic/zlib@1.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/json-c@0.19",
+      "name": "json-c",
+      "version": "0.19",
+      "purl": "pkg:generic/json-c@0.19",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/json-c/json-c/releases/download/json-c-0.19-20260627/json-c-0.19.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/uriparser@1.0.3",
+      "name": "uriparser",
+      "version": "1.0.3",
+      "purl": "pkg:generic/uriparser@1.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b5014a630e61e085787f760c83675a35ef8e719972b05e8f61ff2f48692b15dc"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/uriparser/uriparser/releases/download/uriparser-1.0.3/uriparser-1.0.3.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/freetype@2.15.0",
+      "name": "FreeType",
+      "version": "2.15.0",
+      "purl": "pkg:generic/freetype@2.15.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "FTL"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/mstorsjo/fdk-aac@v3.0.0",
+      "name": "FDK-AAC",
+      "version": "3.0.0",
+      "purl": "pkg:github/mstorsjo/fdk-aac@v3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "FDK-AAC License"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8538ea8f0f9915e460c106a13e1866a9e13c7ee48c1b67d0b2cf7b4e8159bd1a"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v3.0.0.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/cisco/openh264@v2.7.0",
+      "name": "OpenH264",
+      "version": "2.7.0",
+      "purl": "pkg:github/cisco/openh264@v2.7.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5178775c8b440073e70920e97d195efff721c0e56d0a78cc82c919e95d54924d"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/cisco/openh264/archive/refs/tags/v2.7.0.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/opus@1.6.1",
+      "name": "Opus",
+      "version": "1.6.1",
+      "purl": "pkg:generic/opus@1.6.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:github/libusb/libusb@v1.0.30",
+      "name": "libusb",
+      "version": "1.0.30",
+      "purl": "pkg:github/libusb/libusb@v1.0.30",
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-or-later"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "urn:nethriva:native:WinPR:3.33.1",
+      "name": "WinPR",
+      "version": "3.33.1",
+      "purl": "pkg:github/FreeRDP/FreeRDP@3.33.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ]
+    }
+  ]
+}

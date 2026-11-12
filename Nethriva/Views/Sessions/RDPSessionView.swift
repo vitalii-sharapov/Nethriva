@@ -4,6 +4,9 @@ import SwiftUI
 struct RDPSessionView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var recovery: SessionRecovery
+    @Environment(\.sessionLifetime) private var lifetime
+    @State private var recoveryPending = false
     @StateObject private var controller: RDPSessionController
 
     let connection: RemoteConnection
@@ -26,6 +29,10 @@ struct RDPSessionView: View {
                 }
 
                 Spacer()
+                ConnectionCheckButton(connection: connection).labelStyle(.iconOnly)
+                Button { controller.fitToScreen() } label: { Label("Fit Screen", systemImage: "arrow.down.right.and.arrow.up.left") }
+                    .labelStyle(.iconOnly).disabled(!controller.isRunning)
+                    .help("Reapply the current tab size and restore desktop keyboard focus")
 
                 if !controller.viewportDescription.isEmpty {
                     Text(controller.viewportDescription)
@@ -53,13 +60,20 @@ struct RDPSessionView: View {
                 .fixedSize()
                 .help("Change the size of text and controls in the remote Windows session")
 
+                Button { controller.sendCtrlAltDel() } label: { Label("Ctrl+Alt+Del", systemImage: "keyboard") }
+                    .labelStyle(.iconOnly).help("Send Ctrl+Alt+Del to Windows")
+                    .disabled(!controller.isRunning)
+
                 Button {
                     controller.pasteFromMac()
                 } label: {
                     Label("Paste", systemImage: "doc.on.clipboard")
                 }
-                .disabled(!controller.isRunning)
-                .help("Paste Mac text or copied Finder files into Windows")
+                .disabled(!controller.isRunning || !connection.effectiveRDPClipboard)
+                .help(connection.effectiveRDPClipboard ? "Paste Mac text or copied Finder files into Windows" : "Enable clipboard and file transfers in this connection's settings before connecting")
+                if connection.effectiveRDPClipboard {
+                    Label("Clipboard shared", systemImage: "doc.on.clipboard").font(.caption2).foregroundStyle(.secondary)
+                }
 
                 Label(controller.compactStatus, systemImage: controller.statusIcon)
                     .font(.caption)
@@ -74,10 +88,12 @@ struct RDPSessionView: View {
 
                 if controller.canDisconnect {
                     Button("Disconnect", role: .destructive) {
+                        recoveryPending = false
                         controller.stop()
                     }
                 } else if controller.canReconnect {
                     Button("Reconnect") {
+                        recoveryPending = false
                         controller.reconnect()
                     }
                 }
@@ -118,11 +134,15 @@ struct RDPSessionView: View {
             .clipped()
         }
         .task {
+            lifetime?.own("rdp") { [controller = controller] in controller.stop() }
             do {
+                guard ConnectionSecurityConsent.confirmRDP(connection) else { controller.showError("Connection cancelled before credentials were read."); return }
+                let password = try await appState.sessionPassword(for: connection)
+                try Task.checkCancellation(); _ = try appState.credentialGate.check()
                 controller.configure(
-                    password: try appState.password(for: connection),
+                    password: password,
                     saveCredentials: { credentials in
-                        try appState.saveRDPLogin(credentials, for: connection.id)
+                        try appState.saveRDPLogin(credentials, for: connection.id, expectedConnection: connection)
                     }
                 )
             } catch {
@@ -130,7 +150,13 @@ struct RDPSessionView: View {
             }
         }
         .onDisappear {
-            controller.stop()
+            if lifetime == nil { controller.stop() }
+        }
+        .onChange(of: recovery.suspended) { _, suspended in
+            if suspended, controller.canDisconnect { recoveryPending = true; controller.stop() }
+        }
+        .onChange(of: recovery.epoch) { _, _ in
+            if recoveryPending, settings.recoverNetworkSessions { recoveryPending = false; controller.reconnect() }
         }
     }
 
@@ -151,61 +177,87 @@ struct RDPSessionView: View {
     }
 
     private var statusOverlay: some View {
+        RDPStatusPanel(
+            title: controller.statusTitle,
+            detail: controller.statusDetail,
+            icon: controller.statusIcon,
+            iconColor: controller.statusColor,
+            isLaunching: controller.isLaunching,
+            reconnect: controller.canReconnect ? { controller.reconnect() } : nil
+        )
+        .padding(30)
+    }
+}
+
+struct RDPStatusPanel: View {
+    let title: String
+    let detail: String
+    let icon: String
+    let iconColor: Color
+    let isLaunching: Bool
+    var reconnect: (() -> Void)?
+
+    var body: some View {
         VStack(spacing: 14) {
-            if controller.isLaunching {
-                ProgressView()
-                    .controlSize(.large)
+            if isLaunching {
+                ProgressView().controlSize(.large)
             } else {
-                Image(systemName: controller.statusIcon)
+                Image(systemName: icon)
                     .font(.system(size: 38))
-                    .foregroundStyle(controller.statusColor)
+                    .foregroundStyle(iconColor)
             }
-
-            Text(controller.statusTitle)
+            Text(title)
                 .font(.title2.weight(.semibold))
-
-            Text(controller.statusDetail)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 520)
-
-            if controller.canReconnect {
-                Button("Reconnect") {
-                    controller.reconnect()
-                }
-                .keyboardShortcut(.defaultAction)
+            ScrollView {
+                Text(detail)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: 240)
+            if let reconnect {
+                Button("Reconnect", action: reconnect)
+                    .keyboardShortcut(.defaultAction)
             }
         }
+        .foregroundStyle(.primary)
         .padding(28)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: 580)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
         .shadow(radius: 18)
-        .padding(30)
     }
 }
 
 private struct EmbeddedRDPSurface: NSViewRepresentable {
     @ObservedObject var controller: RDPSessionController
+    func makeCoordinator() -> SessionFocusGate { SessionFocusGate() }
 
     func makeNSView(context: Context) -> EmbeddedRDPContainerView {
         let view = EmbeddedRDPContainerView()
-        view.onViewportChange = { [weak controller] size in
+        view.onViewportChange = { [weak controller = controller] size in
             controller?.viewportChanged(to: size)
         }
-        view.onDropTargetChange = { [weak controller] targeted in
+        view.onDropTargetChange = { [weak controller = controller] targeted in
             controller?.setDropTargeted(targeted)
         }
-        view.onFilesDropped = { [weak controller] urls, point in
+        view.onFilesDropped = { [weak controller = controller] urls, point in
             controller?.receiveDroppedFiles(urls, at: point)
         }
         controller.attach(to: view)
+        context.environment.sessionLifetime?.focus = { [weak controller] in controller?.restoreFocus() }
+        controller.setSurfaceActive(context.environment.sessionIsActive)
+        context.coordinator.update(context.environment.sessionIsActive) { controller.restoreFocus() }
         return view
     }
 
     func updateNSView(_ nsView: EmbeddedRDPContainerView, context: Context) {
         controller.attach(to: nsView)
+        controller.setSurfaceActive(context.environment.sessionIsActive)
+        context.coordinator.update(context.environment.sessionIsActive) { controller.restoreFocus() }
     }
 
-    static func dismantleNSView(_ nsView: EmbeddedRDPContainerView, coordinator: ()) {
+    static func dismantleNSView(_ nsView: EmbeddedRDPContainerView, coordinator: SessionFocusGate) {
         nsView.onViewportChange = nil
         nsView.onDropTargetChange = nil
         nsView.onFilesDropped = nil
@@ -326,6 +378,7 @@ final class RDPSessionController: ObservableObject {
     private var monitorTask: Task<Void, Never>?
     private var resizeTask: Task<Void, Never>?
     private var transferMessageTask: Task<Void, Never>?
+    private var surfaceActive = true
 
     init(connection: RemoteConnection) {
         self.connection = connection
@@ -466,6 +519,15 @@ final class RDPSessionController: ObservableObject {
         }
     }
 
+    func sendCtrlAltDel() { if isRunning { session?.sendCtrlAltDel() } }
+    func setSurfaceActive(_ active: Bool) { surfaceActive = active }
+    func restoreFocus() { if surfaceActive, isRunning { session?.focus() } }
+    func fitToScreen() {
+        guard isRunning, let viewport else { return }
+        session?.resize(viewport: viewport, desktop: RDPViewportSizing.desktopSize(for: viewport), displayScale: displayScale)
+        restoreFocus()
+    }
+
     fileprivate func setDropTargeted(_ targeted: Bool) {
         isDropTargeted = targeted
     }
@@ -501,6 +563,7 @@ final class RDPSessionController: ObservableObject {
     }
 
     private func startIfReady() {
+        guard !CredentialAccessGate.shared.isLocked else { return }
         guard phase == .idle,
               session == nil,
               credentialsReady,
@@ -554,7 +617,7 @@ final class RDPSessionController: ObservableObject {
                     }
                     if self.phase != .running {
                         self.phase = .running
-                        monitoredSession.focus()
+                        if self.surfaceActive { monitoredSession.focus() }
                         if let viewport = self.viewport {
                             let desktop = RDPViewportSizing.desktopSize(for: viewport)
                             monitoredSession.resize(
