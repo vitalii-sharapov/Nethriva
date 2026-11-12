@@ -1,6 +1,6 @@
 # Shared libraries, external credentials and privacy lock
 
-These implementations of roadmap 21–23 are included in the [0.13.0 preview, build 30](releases/0.13.0.md). They do not create a hosted service, publish private files, install a password manager, or change existing saved clients automatically.
+These implementations of roadmap 21–23 are included in the [0.13.0 release, build 30](releases/0.13.0.md). They do not create a hosted service, publish private files, install a password manager, or change existing saved clients automatically.
 
 ## Shared connection libraries
 

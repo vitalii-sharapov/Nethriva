@@ -4,9 +4,13 @@
 
 Nethriva is an open-source native macOS connection manager for local terminal, SSH, Telnet, Serial, SFTP, RDP, and virtual-machine consoles. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
 
-Nethriva **0.13.0 (build 30)** is a preview release. Download the Apple-silicon DMG or ZIP from [v0.13.0](https://github.com/vitalii-sharapov/Nethriva/releases/tag/v0.13.0); both have SHA-256 checksum files. This build is locally/ad-hoc signed and not Apple-notarized. Review the [release notes, installation steps and known limits](docs/releases/0.13.0.md) before use. Version 0.12.1 remains the stable release.
+Nethriva **0.13.0 (build 30)** is a release. Download the Apple-silicon DMG or ZIP from [v0.13.0](https://github.com/vitalii-sharapov/Nethriva/releases/tag/v0.13.0); both have SHA-256 checksum files. This build is locally/ad-hoc signed and not Apple-notarized. Review the [release notes, installation steps and known limits](docs/releases/0.13.0.md) before use. Version 0.13.0 is the latest release.
 
-Known preview limitations include a failing WebMKS framebuffer check on GitHub's macOS 27.0.1 virtual machine and an open security warning for legacy VMware SHA-1 certificate fingerprints. Local macOS 27.2 and macOS 26 hosted console tests pass; this is not certification for every Mac, host or OS.
+Known limitations include a failing WebMKS framebuffer check on GitHub's macOS 27.0.1 virtual machine and an open security warning for legacy VMware SHA-1 certificate fingerprints. Local macOS 27.2 and macOS 26 hosted console tests pass; this is not certification for every Mac, host or OS.
+
+**[Download the Mac app — Apple silicon DMG](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.0/Nethriva-0.13.0-macOS-arm64.dmg)** · [ZIP](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.0/Nethriva-0.13.0-macOS-arm64.zip)
+
+Open the DMG and drag **Nethriva.app** into **Applications**, or extract the ZIP and move the app there. No Xcode or compilation is needed for these downloads.
 
 ## At a glance
 
@@ -28,7 +32,7 @@ Nethriva provides downloadable app packages on GitHub Releases and source as an 
 ## Requirements and current platform support
 
 - macOS 14 or later
-- Xcode with the macOS development tools installed
+- Xcode with the macOS development tools installed **only when building from source**; downloaded apps do not require Xcode
 - Apple-silicon Mac for the currently bundled RDP runtime
 - Network access to the SSH, Telnet, SFTP, RDP, or virtualization hosts you want to use
 - Remote hosts with the required SSH/SFTP, Telnet, or RDP service enabled and reachable from the Mac
@@ -342,7 +346,7 @@ The SSH file tree and SFTP browser include an in-memory transfer queue with per-
 - Manual **Help → Check for Updates…** with publisher Ed25519 manifest and SHA-256/size verification; no automatic installation or bypass of macOS security. Verified downloads remain disabled until a publisher public key is configured
 - Universal application-core cross-build and architecture-aware RDP loading. Full universal packaging requires a matching x86_64 FreeRDP bundle; **Intel RDP is not included yet**
 
-See [advanced setup and acceptance](docs/ADVANCED_CONNECTIONS.md) for registration, snapshots, XQuartz, secure VNC, packaging, signed-update publishing and keyboard shortcuts. Live identity-provider/Intel/VoiceOver acceptance is still pending. These additions are included in the 0.13.0 build-30 preview; setup-dependent features still need live acceptance.
+See [advanced setup and acceptance](docs/ADVANCED_CONNECTIONS.md) for registration, snapshots, XQuartz, secure VNC, packaging, signed-update publishing and keyboard shortcuts. Live identity-provider/Intel/VoiceOver acceptance is still pending. These additions are included in the 0.13.0 build-30 release; setup-dependent features still need live acceptance.
 - **Ctrl+Alt+Del** in VNC, SPICE, VMware WebMKS, and RDP tabs
 - Opt-in console text clipboard sharing and explicit **Send Clipboard** action; VM consoles do not inherit RDP's Finder file transfer
 - Per-host HTTPS/WSS certificate policy, with valid-certificate verification as the default and explicit fingerprint approval for trust on first use
@@ -648,13 +652,13 @@ Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party compon
 
 ## Release notes
 
-### 0.13.0 — preview, build 30
+### 0.13.0 — build 30
 
 - Fixed SSH control-socket creation on macOS by reserving OpenSSH’s temporary suffix while preserving credential/key/forwarding context isolation.
 - Fixed local Xcode RDP loading through an optimized Development run configuration; production archives retain strict Release signing. RDP error messages now have readable light/dark contrast and selectable, scrollable details.
 - Added adjustable two-to-four SSH pane groups; new unrelated sessions open alone and selecting a group member restores its sizes.
 - Updated the complete managed dependency stack, including SwiftTerm 1.99.3, noVNC 1.7.0 and the FreeRDP/WinPR 3.33.1/OpenSSL 4.1.0 native runtime. Every version build checks current upstream versions.
-- Hardened imported credential authority, SSH/terminal/SFTP boundaries, RDP trust/defaults and native resource ownership. See [security evidence and unresolved acceptance](SECURITY_TESTING.md); a preview is not production security certification.
+- Hardened imported credential authority, SSH/terminal/SFTP boundaries, RDP trust/defaults and native resource ownership. See [security evidence and unresolved acceptance](SECURITY_TESTING.md); release status is not production security certification.
 
 - Added reviewed shared connection libraries with personal overrides/conflict merging, credential-free destination changes, asynchronous 1Password/Vault password retrieval, and an authenticated app privacy lock. See [setup and safety limits](docs/SHARING_PRIVACY.md). Lock disconnects sessions rather than leaving hidden clipboard/remote channels running.
 

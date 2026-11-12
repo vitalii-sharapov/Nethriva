@@ -1,6 +1,6 @@
 # Nethriva security hardening and release requirements
 
-November 11, 2026 checkpoint carried into the 0.13.0/build 30 preview. Final local application/native checks passed. Fourteen findings are verified closed locally; the native-dependency finding is mitigated with current binaries but remains open for unavailable advisory-detail review. Production distribution acceptance remains blocked. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) contains findings; [SECURITY_TESTING.md](SECURITY_TESTING.md) contains actual results and repeatable procedures. Nothing here authorizes publishing or weakening operating-system protections.
+November 11, 2026 checkpoint carried into the 0.13.0/build 30 release. Final local application/native checks passed. Fourteen findings are verified closed locally; the native-dependency finding is mitigated with current binaries but remains open for unavailable advisory-detail review. Production distribution acceptance remains blocked. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) contains findings; [SECURITY_TESTING.md](SECURITY_TESTING.md) contains actual results and repeatable procedures. Nothing here authorizes publishing or weakening operating-system protections.
 
 ## Credential authority and safe defaults
 

@@ -1,6 +1,6 @@
 # Advanced connections and distribution
 
-These are the local implementations and deliberate limits of original roadmap items 24–30. The **0.13.0, build 30 preview** includes these implementations; see [the release record](releases/0.13.0.md). Automated checks do not certify real identity providers, guests, Intel RDP, or a complete VoiceOver workflow. No automatic update installation, credential export, guest modification, or hosted service was introduced.
+These are the local implementations and deliberate limits of original roadmap items 24–30. The **0.13.0, build 30 release** includes these implementations; see [the release record](releases/0.13.0.md). Automated checks do not certify real identity providers, guests, Intel RDP, or a complete VoiceOver workflow. No automatic update installation, credential export, guest modification, or hosted service was introduced.
 
 ## VMware federated sign-in (24)
 

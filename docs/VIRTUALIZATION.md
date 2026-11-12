@@ -1,6 +1,6 @@
 # Virtualization hosts and consoles — 0.13.0
 
-Included in the [build-30 preview](releases/0.13.0.md). Platform/version-specific live acceptance remains pending.
+Included in the [build-30 release](releases/0.13.0.md). Platform/version-specific live acceptance remains pending.
 
 These integrations add VM discovery, console tabs, and focused management actions. They are not a replacement for a host's complete administrative UI. The adapters are new: automated tests exercise parsing, safety boundaries, console loading, and a local VNC connection, but live acceptance testing against each host version is still required.
 

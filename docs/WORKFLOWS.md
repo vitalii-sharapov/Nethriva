@@ -1,6 +1,6 @@
 # Workspace and SSH workflow tools
 
-These features are included in the [0.13.0/build 30 preview](releases/0.13.0.md). Saved personal clients and Keychain passwords are not included in builds.
+These features are included in the [0.13.0/build 30 release](releases/0.13.0.md). Saved personal clients and Keychain passwords are not included in builds.
 
 ## Split panes and detached sessions
 

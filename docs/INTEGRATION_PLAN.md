@@ -131,4 +131,4 @@ The existing session-tab architecture keeps terminal, file-browser, and RDP clie
 
 ## Dependency updates before version builds
 
-The scheme queries the complete managed inventory before Release/archive builds; a sandboxed target phase checks a fresh, matching, single-use receipt. Native rebuilds also check their libraries/tools and Xcode first. Scanners/CI reuse the same checker, including tag-only and transitive packages. See [DEPENDENCY_UPDATES.md](DEPENDENCY_UPDATES.md). The 0.13.0/build 30 preview uses Xcode 27.2, SwiftTerm 1.99.3, noVNC 1.7.0, SPICE 85262d0, FDK-AAC 3.0.0, OpenSSL 4.1.0 and CMake 4.4.5.
+The scheme queries the complete managed inventory before Release/archive builds; a sandboxed target phase checks a fresh, matching, single-use receipt. Native rebuilds also check their libraries/tools and Xcode first. Scanners/CI reuse the same checker, including tag-only and transitive packages. See [DEPENDENCY_UPDATES.md](DEPENDENCY_UPDATES.md). The 0.13.0/build 30 release uses Xcode 27.2, SwiftTerm 1.99.3, noVNC 1.7.0, SPICE 85262d0, FDK-AAC 3.0.0, OpenSSL 4.1.0 and CMake 4.4.5.

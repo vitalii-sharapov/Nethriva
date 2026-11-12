@@ -1,6 +1,6 @@
 # Terminal and connection-library tools
 
-Roadmap items 15–20 are included in the [0.13.0/build 30 preview](releases/0.13.0.md). Building the app does not publish a new release or bundle your saved clients. Existing clients keep their settings unless you deliberately edit them or enable inheritance.
+Roadmap items 15–20 are included in the [0.13.0/build 30 release](releases/0.13.0.md). Building the app does not publish a new release or bundle your saved clients. Existing clients keep their settings unless you deliberately edit them or enable inheritance.
 
 ## 15 — Safe multi-session commands
 

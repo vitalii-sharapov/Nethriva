@@ -1,12 +1,12 @@
 # Nethriva project context
 
-Build-30 publication checkpoint (2026-11-11): preview distribution includes the documented app/security/dependency follow-ups; no production approval is claimed. Local 280 Debug/279 applicable optimized tests and exact-archive checks pass. Hosted macOS 26 arm64 passes; latest Intel native-pane and macOS 27.0.1 VM WebMKS pixel checks fail, while local macOS 27.2 passes. CodeQL executes with an open High legacy-SHA-1 certificate warning. These limitations remain visible in [the release record](releases/0.13.0.md) and [security evidence](../SECURITY_TESTING.md). Production app bytes are unchanged by the subsequent fixture/workflow/documentation fixes.
+Build-30 publication checkpoint (2026-11-11): release distribution includes the documented app/security/dependency follow-ups; no production approval is claimed. Local 280 Debug/279 applicable optimized tests and exact-archive checks pass. Hosted macOS 26 arm64 passes; latest Intel native-pane and macOS 27.0.1 VM WebMKS pixel checks fail, while local macOS 27.2 passes. CodeQL executes with an open High legacy-SHA-1 certificate warning. These limitations remain visible in [the release record](releases/0.13.0.md) and [security evidence](../SECURITY_TESTING.md). Production app bytes are unchanged by the subsequent fixture/workflow/documentation fixes.
 
 This document gives future development tasks a compact, durable understanding of Nethriva. It should be updated whenever architecture, supported platforms, release procedures, or major product priorities change.
 
 ## Product
 
-Release checkpoint (2026-11-11): **v0.13.0/build 30 preview**, including the socket-length and local RDP signing/readability fixes. Main/tag/binary publication is a deliberate release operation; the preview is ad-hoc signed and unnotarized, with production/advisory/live-platform acceptance still incomplete. See [the release record](releases/0.13.0.md). Older dated build-27/28/29 evidence below remains historical.
+Release checkpoint (2026-11-11): **v0.13.0/build 30 release**, including the socket-length and local RDP signing/readability fixes. Main/tag/binary publication is a deliberate release operation; the release is ad-hoc signed and unnotarized, with production/advisory/live-platform acceptance still incomplete. See [the release record](releases/0.13.0.md). Older dated build-27/28/29 evidence below remains historical.
 
 RDP Xcode follow-up (2026-11-11): direct ad-hoc Release Run could not load native libraries under exception-free Hardened Runtime library validation. Run now uses optimized Development with existing local entitlements and the normal Release data profile; Debug stays isolated, Archive/Profile stay strict Release. Development also runs the complete fresh component/receipt gate. The RDP status panel now uses an opaque adaptive background and primary selectable text in a bounded scroll region, replacing low-contrast material/secondary text. Actual hosted canvas loading and signing/build invariants have regressions; see the local follow-up report for acceptance scope. No server login or production-signing acceptance is implied.
 
@@ -24,7 +24,7 @@ Nethriva is a free, open-source, native macOS connection manager for local termi
 
 - Public repository: <https://github.com/vitalii-sharapov/Nethriva>
 - License: Apache License 2.0
-- Current project version: 0.13.0 (build 30), preview
+- Current project version: 0.13.0 (build 30)
 - Minimum macOS version: macOS 14
 - Current bundled RDP architecture: Apple silicon
 - GitHub Sponsors: <https://github.com/sponsors/vitalii-sharapov>

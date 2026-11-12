@@ -1,6 +1,6 @@
 # Reliability and daily-use hardening
 
-These changes are included in the [0.13.0/build 30 preview](releases/0.13.0.md). Automated tests do not certify untested servers or devices.
+These changes are included in the [0.13.0/build 30 release](releases/0.13.0.md). Automated tests do not certify untested servers or devices.
 
 ## What changed
 
