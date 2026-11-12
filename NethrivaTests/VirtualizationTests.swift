@@ -479,105 +479,113 @@ final class VirtualizationTests: XCTestCase {
     @MainActor func testWebMKSTicketConsoleOverPinnedTLSAndCtrlAltDel() async throws {
         var step = "create memory-only TLS fixture"
         do {
-        let identity = try await Task.detached { try MockTLSIdentity() }.value
-        let server = try MockVNCServer(tls: identity.identity, webSocket: true)
-        defer { server.stop() }
-        let started = expectation(description: "Synthetic encrypted WebMKS server listening")
-        server.start { started.fulfill() }
-        await fulfillment(of: [started], timeout: 5)
-        let port = try XCTUnwrap(server.listener.port).rawValue
-        let response = try VMXMLDocument.parse(Data("""
-        <AcquireTicketResponse><returnval><ticket>synthetic-ticket</ticket><host>legacy-route.example.invalid</host><port>902</port>
-        <url>wss://localhost:\(port)/ticket/synthetic-ticket</url>
-        <certThumbprintList><hashAlgorithm>sha256</hashAlgorithm><thumbprint>\(identity.sha256)</thumbprint></certThumbprintList>
-        </returnval></AcquireTicketResponse>
-        """.utf8))
-        let descriptor = try VMwareBackend.consoleDescriptor(response, apiOrigin: URL(string: "https://vc.example.invalid")!)
-        let bridge = VMConsoleWebBridge()
-        let connected = expectation(description: "Ticket-authorized console initialized in bundled noVNC")
-        bridge.onState = { value in
-            if value == "connected" { connected.fulfill() }
-            else { XCTFail("Synthetic WebMKS connection failed") }
-        }
-        bridge.onError = { _ in XCTFail("Synthetic pinned TLS connection was rejected") }
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
-        config.setURLSchemeHandler(VMConsoleAssets(root: try XCTUnwrap(Bundle.main.resourceURL?.appendingPathComponent("Consoles"))), forURLScheme: "nethriva-console")
-        config.userContentController.add(bridge, name: "vmConsole")
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
-        let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = webView; bridge.webView = webView; webView.navigationDelegate = bridge
-        window.orderFront(nil)
-        let http = try VirtualizationHTTP(connection: RemoteConnection(name: "Mock", kind: .virtualization, host: "vc.example.invalid", port: 443))
-        defer {
-            bridge.stop(); http.close(); webView.navigationDelegate = nil
-            config.userContentController.removeScriptMessageHandler(forName: "vmConsole"); window.contentView = nil
-            window.orderOut(nil); window.close()
-        }
-        bridge.configure(descriptor, http: http, options: ["fit": true, "viewOnly": false, "clipboard": false])
-        webView.load(URLRequest(url: URL(string: "nethriva-console://bundle/console.html")!))
-        await fulfillment(of: [connected], timeout: 10)
-        step = "read decoded framebuffer"
-        XCTAssertTrue(server.upgradeRequest.hasPrefix("GET /ticket/synthetic-ticket HTTP/1.1"))
-        XCTAssertTrue(server.upgradeRequest.lowercased().contains("sec-websocket-protocol: binary"))
-        XCTAssertFalse(server.upgradeRequest.lowercased().contains("cookie:"))
-        XCTAssertFalse(server.upgradeRequest.lowercased().contains("authorization:"))
-        var pixel: [Int] = []
-        // Connection readiness precedes noVNC's asynchronous first framebuffer.
-        // A nonzero size also precedes WebKit's backing-store readiness. Retry
-        // only InvalidStateError within this bound; actual pixels must match.
-        for _ in 0..<100 {
-            pixel = try await webView.evaluateJavaScript("""
+            let identity = try await Task.detached { try MockTLSIdentity() }.value
+            let server = try MockVNCServer(tls: identity.identity, webSocket: true)
+            defer { server.stop() }
+            let started = expectation(description: "Synthetic encrypted WebMKS server listening")
+            server.start { started.fulfill() }
+            await fulfillment(of: [started], timeout: 5)
+            let port = try XCTUnwrap(server.listener.port).rawValue
+            let response = try VMXMLDocument.parse(Data("""
+            <AcquireTicketResponse><returnval><ticket>synthetic-ticket</ticket><host>legacy-route.example.invalid</host><port>902</port>
+            <url>wss://localhost:\(port)/ticket/synthetic-ticket</url>
+            <certThumbprintList><hashAlgorithm>sha256</hashAlgorithm><thumbprint>\(identity.sha256)</thumbprint></certThumbprintList>
+            </returnval></AcquireTicketResponse>
+            """.utf8))
+            let descriptor = try VMwareBackend.consoleDescriptor(response, apiOrigin: URL(string: "https://vc.example.invalid")!)
+            let bridge = VMConsoleWebBridge()
+            let connected = expectation(description: "Ticket-authorized console initialized in bundled noVNC")
+            bridge.onState = { value in
+                if value == "connected" { connected.fulfill() }
+                else { XCTFail("Synthetic WebMKS connection failed") }
+            }
+            bridge.onError = { _ in XCTFail("Synthetic pinned TLS connection was rejected") }
+            let config = WKWebViewConfiguration()
+            config.websiteDataStore = .nonPersistent()
+            config.setURLSchemeHandler(VMConsoleAssets(root: try XCTUnwrap(Bundle.main.resourceURL?.appendingPathComponent("Consoles"))), forURLScheme: "nethriva-console")
+            config.userContentController.add(bridge, name: "vmConsole")
+            let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
+            let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = webView; bridge.webView = webView; webView.navigationDelegate = bridge
+            window.orderFront(nil)
+            let http = try VirtualizationHTTP(connection: RemoteConnection(name: "Mock", kind: .virtualization, host: "vc.example.invalid", port: 443))
+            defer {
+                bridge.stop(); http.close(); webView.navigationDelegate = nil
+                config.userContentController.removeScriptMessageHandler(forName: "vmConsole"); window.contentView = nil
+                window.orderOut(nil); window.close()
+            }
+            bridge.configure(descriptor, http: http, options: ["fit": true, "viewOnly": false, "clipboard": false])
+            webView.load(URLRequest(url: URL(string: "nethriva-console://bundle/console.html")!))
+            await fulfillment(of: [connected], timeout: 10)
+            step = "sample rendered console pixels"
+            XCTAssertTrue(server.upgradeRequest.hasPrefix("GET /ticket/synthetic-ticket HTTP/1.1"))
+            XCTAssertTrue(server.upgradeRequest.lowercased().contains("sec-websocket-protocol: binary"))
+            XCTAssertFalse(server.upgradeRequest.lowercased().contains("cookie:"))
+            XCTAssertFalse(server.upgradeRequest.lowercased().contains("authorization:"))
+            var pixel: [Int] = []
+            // Read the actually presented surface through WebKit's native snapshot
+            // API. Direct canvas readback is unavailable on some hosted GPU stacks.
+            for _ in 0..<50 {
+                let geometry = try await webView.evaluateJavaScript("""
+                (() => {
+                    const canvas = document.querySelector('#screen canvas');
+                    if (!canvas || canvas.width < 1 || canvas.height < 1) return [];
+                    const rect = canvas.getBoundingClientRect();
+                    return [rect.left, rect.top, rect.width, rect.height, canvas.width, canvas.height];
+                })()
+                """) as? [Double] ?? []
+                if geometry.count == 6, geometry[2] > 0, geometry[3] > 0 {
+                    let snapshot = WKSnapshotConfiguration()
+                    snapshot.afterScreenUpdates = true
+                    snapshot.rect = CGRect(x: geometry[0] + 2 * geometry[2] / geometry[4],
+                                           y: geometry[1] + 2 * geometry[3] / geometry[5], width: 1, height: 1)
+                    let image = try await webView.takeSnapshot(configuration: snapshot)
+                    if let data = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: data),
+                       let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2) {
+                        pixel = [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
+                            .map { Int(($0 * 255).rounded()) }
+                    }
+                }
+                if pixel == [32, 128, 224, 255] { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertEqual(pixel, [32, 128, 224, 255], "Framebuffers must render over the encrypted WebMKS transport")
+            step = "measure visible canvas"
+            let visible = try await webView.evaluateJavaScript("""
             (() => {
                 const canvas = document.querySelector('#screen canvas');
-                if (!canvas || canvas.width < 1 || canvas.height < 1) return [];
-                try { return Array.from(canvas.getContext('2d').getImageData(0,0,1,1).data); }
-                catch (error) {
-                    if (error.name === 'InvalidStateError') return [];
-                    throw error;
-                }
+                const rect = canvas.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.top < innerHeight && rect.bottom > 0 &&
+                       rect.left < innerWidth && rect.right > 0;
             })()
-            """) as? [Int] ?? []
-            if pixel == [32, 128, 224, 255] { break }
+            """) as? Bool
+            XCTAssertEqual(visible, true, "Decoded pixels are insufficient: the VNC canvas must be visible in the tab, not below a full-height SPICE placeholder")
+            let placeholderHidden = try await webView.evaluateJavaScript("document.getElementById('spice-screen').hidden") as? Bool
+            XCTAssertEqual(placeholderHidden, true)
+            step = "resize native window and measure fit"
+            window.setContentSize(NSSize(width: 320, height: 240))
+            // Yield to native relayout before measuring the actual visible canvas.
             try await Task.sleep(for: .milliseconds(50))
-        }
-        XCTAssertEqual(pixel, [32, 128, 224, 255], "Framebuffers must render over the encrypted WebMKS transport")
-        step = "measure visible canvas"
-        let visible = try await webView.evaluateJavaScript("""
-        (() => {
+            let fitted = try await webView.evaluateJavaScript("""
+            (() => {
+            window.consoleAction('fit', false);
+            window.consoleAction('fit', true);
             const canvas = document.querySelector('#screen canvas');
             const rect = canvas.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0 && rect.top < innerHeight && rect.bottom > 0 &&
-                   rect.left < innerWidth && rect.right > 0;
-        })()
-        """) as? Bool
-        XCTAssertEqual(visible, true, "Decoded pixels are insufficient: the VNC canvas must be visible in the tab, not below a full-height SPICE placeholder")
-        let placeholderHidden = try await webView.evaluateJavaScript("document.getElementById('spice-screen').hidden") as? Bool
-        XCTAssertEqual(placeholderHidden, true)
-        step = "resize native window and measure fit"
-        window.setContentSize(NSSize(width: 320, height: 240))
-        // Yield to native relayout before measuring the actual visible canvas.
-        try await Task.sleep(for: .milliseconds(50))
-        let fitted = try await webView.evaluateJavaScript("""
-        (() => {
-        window.consoleAction('fit', false);
-        window.consoleAction('fit', true);
-        const canvas = document.querySelector('#screen canvas');
-        const rect = canvas.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && rect.width <= innerWidth + 1 && rect.height <= innerHeight + 1 &&
-               Math.abs(rect.width / rect.height - 640 / 480) < 0.01 && canvas.width === 640 && canvas.height === 480;
-        })()
-        """) as? Bool
-        XCTAssertEqual(fitted, true, "Fit must scale to the available tab, preserve proportions, and leave guest resolution unchanged")
-        let delete = expectation(description: "Ctrl Alt Delete reached encrypted VMware-style transport")
-        server.onDelete = { delete.fulfill() }; bridge.action("cad")
-        await fulfillment(of: [delete], timeout: 5)
-        step = "verify page excludes ticket"
-        // Ticket endpoints are held only by Swift; never exposed in page navigation/config.
-        XCTAssertEqual(webView.url?.scheme, "nethriva-console")
-        let pageContainsTicket = try await webView.evaluateJavaScript("document.documentElement.outerHTML.includes('synthetic-ticket') || location.href.includes('synthetic-ticket')") as? Bool
-        XCTAssertEqual(pageContainsTicket, false)
+            return rect.width > 0 && rect.height > 0 && rect.width <= innerWidth + 1 && rect.height <= innerHeight + 1 &&
+                   Math.abs(rect.width / rect.height - 640 / 480) < 0.01 && canvas.width === 640 && canvas.height === 480;
+            })()
+            """) as? Bool
+            XCTAssertEqual(fitted, true, "Fit must scale to the available tab, preserve proportions, and leave guest resolution unchanged")
+            let delete = expectation(description: "Ctrl Alt Delete reached encrypted VMware-style transport")
+            server.onDelete = { delete.fulfill() }; bridge.action("cad")
+            await fulfillment(of: [delete], timeout: 5)
+            step = "verify page excludes ticket"
+            // Ticket endpoints are held only by Swift; never exposed in page navigation/config.
+            XCTAssertEqual(webView.url?.scheme, "nethriva-console")
+            let pageContainsTicket = try await webView.evaluateJavaScript("document.documentElement.outerHTML.includes('synthetic-ticket') || location.href.includes('synthetic-ticket')") as? Bool
+            XCTAssertEqual(pageContainsTicket, false)
         } catch {
             XCTFail("Synthetic WebMKS step [\(step)] failed: \(error)")
         }
@@ -921,10 +929,13 @@ private final class MockVNCServer: @unchecked Sendable {
             let name = Data("Test VM".utf8)
             header += Data([0, 0, 0, UInt8(name.count)]); header += name; write(header)
             if webSocket {
-                // Raw framebuffer rectangle followed by VMware's alpha-cursor pseudo-encoding.
-                write(Data([0, 0, 0, 2,
-                            0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 32, 128, 224, 0,
-                            0, 0, 0, 0, 0, 1, 0, 1, 0x57, 0x4d, 0x56, 0x64, 1, 0, 255, 0, 0, 255]))
+                // An 8x8 solid region permits an interior pixel sample after
+                // Retina/CSS scaling without sampling an interpolation edge.
+                var update = Data([0, 0, 0, 2, 0, 0, 0, 0, 0, 8, 0, 8, 0, 0, 0, 0])
+                for _ in 0..<64 { update += Data([32, 128, 224, 0]) }
+                // VMware's alpha-cursor pseudo-encoding still follows the frame.
+                update += Data([0, 0, 0, 0, 0, 1, 0, 1, 0x57, 0x4d, 0x56, 0x64, 1, 0, 255, 0, 0, 255])
+                write(update)
             }
         }
         if stage == 3, !reportedDelete, input.range(of: Data([4, 1, 0, 0, 0, 0, 255, 255])) != nil {
