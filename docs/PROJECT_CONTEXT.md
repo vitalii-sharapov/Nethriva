@@ -1,5 +1,7 @@
 # Nethriva project context
 
+Build-30 publication checkpoint (2026-11-11): preview distribution includes the documented app/security/dependency follow-ups; no production approval is claimed. Local 280 Debug/279 applicable optimized tests and exact-archive checks pass. Hosted macOS 26 arm64 passes; latest Intel native-pane and macOS 27.0.1 VM WebMKS pixel checks fail, while local macOS 27.2 passes. CodeQL executes with an open High legacy-SHA-1 certificate warning. These limitations remain visible in [the release record](releases/0.13.0.md) and [security evidence](../SECURITY_TESTING.md). Production app bytes are unchanged by the subsequent fixture/workflow/documentation fixes.
+
 This document gives future development tasks a compact, durable understanding of Nethriva. It should be updated whenever architecture, supported platforms, release procedures, or major product priorities change.
 
 ## Product

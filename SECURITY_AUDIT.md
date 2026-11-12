@@ -8,6 +8,8 @@ Assessment dates: November 8–11, 2026. Assessed baseline: **0.13.0/build 29**,
 
 Publication analysis follow-up (build 30): remote CodeQL executed successfully on the compatible Intel analysis host and reported [open alert 1](https://github.com/vitalii-sharapov/Nethriva/security/code-scanning/1), `swift/weak-sensitive-data-hashing` (High), in the legacy VMware SHA-1 certificate fingerprint path. SHA-256/full-certificate identities are preferred, but a ticket containing only a legacy SHA-1 thumbprint can still authorize its console certificate. This is certificate identity comparison, not password hashing, and no interception/collision exploit was demonstrated. The weak-hash compatibility path remains in this preview; the alert is not dismissed or declared fixed. Removing its independent trust authority, with legacy interoperability tests, is additional production hardening. The original 15-finding counts below describe the earlier grouped assessment, not this later CodeQL alert. A completed CodeQL job does not mean zero findings.
 
+Remote acceptance also remains incomplete: macOS 26 compatibility jobs pass, but the macOS 27.0.1 virtual machine renders console background instead of the synthetic WebMKS framebuffer. Its failing test remains enabled. The current preview is not promoted to stable/security-approved status; see [the exact execution record](SECURITY_TESTING.md).
+
 | Item | Recorded state |
 | --- | --- |
 | Finding classification | **0 Critical, 6 High, 8 Medium, 1 Low**; 15 grouped findings below. No arbitrary-code-execution exploit was demonstrated. |

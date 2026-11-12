@@ -14,6 +14,8 @@ Use `scripts/smoke-app-launch.swift` against a trusted extracted app in a normal
 
 November 11, 2026 dependency update: the 0.13.0/build 30 preview is built/tested on M5 Pro/macOS 27.2 with Xcode 27.2/Swift 6.4.2. Managed packages/runtime are current at that check. Xcode 26+ is required for Swift tools 6.2; the app/native deployment minimum remains macOS 14. Other chips/older OS versions, physical devices and live host/provider matrices remain unverified.
 
+Hosted publication follow-up: the macOS 26 arm64 Debug job passes. Earlier full Intel runs and its latest synthetic console test pass, but its latest four-native-pane test fails; Intel app-core acceptance remains incomplete. The macOS 27.0.1 virtual machine fails the actual rendered WebMKS pixel check (background instead of frame), despite successful connection/geometry/input assertions. The causes remain open; local macOS 27.2 passes. These are virtual-machine/app-core results, not additional physical-chip or Intel-RDP certification. The preview retains the failing tests and discloses incomplete CI acceptance in [the release record](releases/0.13.0.md).
+
 ## Connection coverage
 
 | Area | Current coverage |

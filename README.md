@@ -6,6 +6,8 @@ Nethriva is an open-source native macOS connection manager for local terminal, S
 
 Nethriva **0.13.0 (build 30)** is a preview release. Download the Apple-silicon DMG or ZIP from [v0.13.0](https://github.com/vitalii-sharapov/Nethriva/releases/tag/v0.13.0); both have SHA-256 checksum files. This build is locally/ad-hoc signed and not Apple-notarized. Review the [release notes, installation steps and known limits](docs/releases/0.13.0.md) before use. Version 0.12.1 remains the stable release.
 
+Known preview limitations include a failing WebMKS framebuffer check on GitHub's macOS 27.0.1 virtual machine and an open security warning for legacy VMware SHA-1 certificate fingerprints. Local macOS 27.2 and macOS 26 hosted console tests pass; this is not certification for every Mac, host or OS.
+
 ## At a glance
 
 | Capability | Implementation | Opens in a tab | File transfer |
