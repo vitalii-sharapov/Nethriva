@@ -114,8 +114,22 @@ final class VirtualizationTests: XCTestCase {
         let handler = ConsoleReadyHandler(expectation: expectation(description: "Console JavaScript modules loaded"))
         config.userContentController.add(handler, name: "vmConsole")
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
+        // Match the app's hosted surface. An unattached WKWebView can remain
+        // background-throttled during a cold WebContent process launch in CI.
+        let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = webView
+        webView.navigationDelegate = handler
+        defer {
+            webView.stopLoading(); webView.navigationDelegate = nil
+            config.userContentController.removeScriptMessageHandler(forName: "vmConsole")
+            window.contentView = nil
+        }
         webView.load(URLRequest(url: URL(string: "nethriva-console://bundle/console.html")!))
-        await fulfillment(of: [handler.expectation], timeout: 15)
+        await fulfillment(of: [handler.expectation], timeout: 30)
+        guard handler.ready else {
+            XCTFail(handler.navigationFailure ?? "Console module readiness was not received")
+            return
+        }
         let ready = try await webView.evaluateJavaScript("typeof window.startConsole === 'function' && typeof window.consoleAction === 'function'") as? Bool
         XCTAssertEqual(ready, true)
         let modes = try await webView.evaluateJavaScript("""
@@ -131,7 +145,6 @@ final class VirtualizationTests: XCTestCase {
         })()
         """) as? [Bool]
         XCTAssertEqual(modes, [true, true], "Only the selected renderer may occupy the visible console area")
-        webView.stopLoading(); config.userContentController.removeScriptMessageHandler(forName: "vmConsole")
     }
 
     @MainActor func testVNCConsoleConnectsOverNativeTCPAndSendsCtrlAltDel() async throws {
@@ -716,11 +729,30 @@ final class VirtualizationTests: XCTestCase {
     override func stopLoading() {}
 }
 
-@MainActor private final class ConsoleReadyHandler: NSObject, WKScriptMessageHandler {
+@MainActor private final class ConsoleReadyHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     let expectation: XCTestExpectation
     init(expectation: XCTestExpectation) { self.expectation = expectation }
+    private(set) var ready = false
+    private(set) var navigationFailure: String?
+    private var completed = false
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if (message.body as? [String: Any])?["kind"] as? String == "ready" { expectation.fulfill() }
+        guard !completed, (message.body as? [String: Any])?["kind"] as? String == "ready" else { return }
+        ready = true; complete()
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        failNavigation(error.localizedDescription)
+    }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        failNavigation(error.localizedDescription)
+    }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        failNavigation("Console WebContent process terminated before module readiness")
+    }
+    private func failNavigation(_ message: String) {
+        guard !completed else { return }; navigationFailure = message; complete()
+    }
+    private func complete() {
+        guard !completed else { return }; completed = true; expectation.fulfill()
     }
 }
 

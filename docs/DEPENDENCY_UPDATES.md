@@ -8,6 +8,8 @@ The scheme's Release/archive pre-action queries official upstream releases/tags 
 
 The native builder checks its complete library/tool inventory and Xcode before downloading/building. The security workflow checks the full inventory weekly and on its configured events. This config does not prove remote CI executed or branch protections require it.
 
+Release/security CI uses GitHub's documented `xcode-27` hosted image and explicitly selects Xcode 27.2. The macos-26/Intel jobs provide Debug compatibility coverage with their available Xcode 26.6; they cannot satisfy a current-toolchain Release receipt. The runner's preview label is narrowly declared for actionlint 1.7.12, whose built-in label catalog predates it. No version/network/receipt check is bypassed.
+
 ```sh
 python3 scripts/check-dependency-updates.py --require-current-toolchain --report /absolute/private/results/dependencies.json
 bash scripts/prepare-swift-packages.sh /absolute/private/package-cache

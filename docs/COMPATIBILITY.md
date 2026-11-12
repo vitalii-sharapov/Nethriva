@@ -41,7 +41,7 @@ No exact hypervisor version is certified by these unit tests. Guest-agent suppor
 
 ## Expanded verification workflow
 
-GitHub Actions is configured on macos-26 and macos-26-intel runners with the pinned package graph and selected Xcode. Check the exact release commit’s workflow results; configuration alone is not proof of successful remote execution or older-OS testing. Local automated checks run on the development Mac only; minimum deployment target is not proof of testing every macOS release. Apple-silicon FreeRDP remains the only bundled runtime; this matrix does not add Intel RDP support.
+GitHub Actions tests on xcode-27 (Xcode 27.2), macos-26 and macos-26-intel. Only xcode-27 performs current-toolchain Release/package/universal-core checks; older images provide compatible-toolchain Debug regression coverage. Their default Xcode 26.6 is not treated as current release validation. Check the exact release commit’s workflow results; configuration alone is not proof of successful remote execution or older-OS testing. Minimum deployment target is not proof of testing every macOS release. Apple-silicon FreeRDP remains the only bundled runtime; Intel jobs do not add Intel RDP support.
 
 The universal application core has been cross-built for arm64/x86_64 locally. Packaging refuses a universal release without a separately validated, matching Intel RDP bundle. No live Intel/Rosetta RDP result is recorded. VM details/snapshot support varies by adapter, and X11 needs XQuartz plus host support. See [ADVANCED_CONNECTIONS.md](ADVANCED_CONNECTIONS.md); synthetic tests and configured CI are not live identity-provider, hypervisor or VoiceOver certification.
 

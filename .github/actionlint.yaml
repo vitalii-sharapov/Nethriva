@@ -1,0 +1,6 @@
+# actionlint 1.7.12 predates this official GitHub-hosted preview label.
+# Exact extension only; keep all other runner-label validation enabled.
+# https://github.com/actions/runner-images/blob/main/README.md#available-images
+self-hosted-runner:
+  labels:
+    - xcode-27
