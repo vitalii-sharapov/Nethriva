@@ -477,6 +477,8 @@ final class VirtualizationTests: XCTestCase {
     }
 
     @MainActor func testWebMKSTicketConsoleOverPinnedTLSAndCtrlAltDel() async throws {
+        var step = "create memory-only TLS fixture"
+        do {
         let identity = try await Task.detached { try MockTLSIdentity() }.value
         let server = try MockVNCServer(tls: identity.identity, webSocket: true)
         defer { server.stop() }
@@ -504,15 +506,19 @@ final class VirtualizationTests: XCTestCase {
         config.userContentController.add(bridge, name: "vmConsole")
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
         let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView; bridge.webView = webView; webView.navigationDelegate = bridge
+        window.orderFront(nil)
         let http = try VirtualizationHTTP(connection: RemoteConnection(name: "Mock", kind: .virtualization, host: "vc.example.invalid", port: 443))
         defer {
             bridge.stop(); http.close(); webView.navigationDelegate = nil
             config.userContentController.removeScriptMessageHandler(forName: "vmConsole"); window.contentView = nil
+            window.orderOut(nil); window.close()
         }
         bridge.configure(descriptor, http: http, options: ["fit": true, "viewOnly": false, "clipboard": false])
         webView.load(URLRequest(url: URL(string: "nethriva-console://bundle/console.html")!))
         await fulfillment(of: [connected], timeout: 10)
+        step = "read decoded framebuffer"
         XCTAssertTrue(server.upgradeRequest.hasPrefix("GET /ticket/synthetic-ticket HTTP/1.1"))
         XCTAssertTrue(server.upgradeRequest.lowercased().contains("sec-websocket-protocol: binary"))
         XCTAssertFalse(server.upgradeRequest.lowercased().contains("cookie:"))
@@ -524,6 +530,7 @@ final class VirtualizationTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(50))
         }
         XCTAssertEqual(pixel, [32, 128, 224, 255], "Framebuffers must render over the encrypted WebMKS transport")
+        step = "measure visible canvas"
         let visible = try await webView.evaluateJavaScript("""
         (() => {
             const canvas = document.querySelector('#screen canvas');
@@ -535,10 +542,9 @@ final class VirtualizationTests: XCTestCase {
         XCTAssertEqual(visible, true, "Decoded pixels are insufficient: the VNC canvas must be visible in the tab, not below a full-height SPICE placeholder")
         let placeholderHidden = try await webView.evaluateJavaScript("document.getElementById('spice-screen').hidden") as? Bool
         XCTAssertEqual(placeholderHidden, true)
+        step = "resize native window and measure fit"
         window.setContentSize(NSSize(width: 320, height: 240))
-        // Wait in Swift rather than leaving an asynchronous JavaScript task in
-        // WebKit during native window relayout (macOS 27.0 WebKit can tear down
-        // that task with InvalidTransition/removedFromContainer).
+        // Yield to native relayout before measuring the actual visible canvas.
         try await Task.sleep(for: .milliseconds(50))
         let fitted = try await webView.evaluateJavaScript("""
         (() => {
@@ -554,10 +560,14 @@ final class VirtualizationTests: XCTestCase {
         let delete = expectation(description: "Ctrl Alt Delete reached encrypted VMware-style transport")
         server.onDelete = { delete.fulfill() }; bridge.action("cad")
         await fulfillment(of: [delete], timeout: 5)
+        step = "verify page excludes ticket"
         // Ticket endpoints are held only by Swift; never exposed in page navigation/config.
         XCTAssertEqual(webView.url?.scheme, "nethriva-console")
         let pageContainsTicket = try await webView.evaluateJavaScript("document.documentElement.outerHTML.includes('synthetic-ticket') || location.href.includes('synthetic-ticket')") as? Bool
         XCTAssertEqual(pageContainsTicket, false)
+        } catch {
+            XCTFail("Synthetic WebMKS step [\(step)] failed: \(error)")
+        }
     }
 
     @MainActor func testWebMKSTLSRejectsWrongTicketCertificate() async throws {
