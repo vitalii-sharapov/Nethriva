@@ -65,7 +65,7 @@ References: [XQuartz FAQ](https://www.xquartz.org/FAQs.html), [OpenSSH X11 optio
 
 The application core cross-builds for arm64 and x86_64. **The repository still supplies only an arm64 RDP runtime.** An Intel slice is not proof that FreeRDP/its native bridge can load on Intel. The runtime loader chooses an architecture-specific bundle and reports a clear error instead of attempting to load arm64 libraries on Intel.
 
-The release script defaults to arm64. Universal packaging requires an independently built, license-complete **matching x86_64 FreeRDP 3.31.1/native bridge** bundle with `Frameworks`, `MacOS` and `ThirdPartyLicenses`. Provide its absolute location as `NETHRIVA_INTEL_RDP_ROOT`, then run:
+The release script defaults to arm64. Universal packaging requires an independently built, license-complete **matching x86_64 FreeRDP 3.33.1/native bridge** bundle with `Frameworks`, `MacOS` and `ThirdPartyLicenses`. Provide its absolute location as `NETHRIVA_INTEL_RDP_ROOT`, then run:
 
 ```sh
 zsh scripts/build-release.sh 0.13.0 universal
