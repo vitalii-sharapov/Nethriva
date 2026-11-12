@@ -76,10 +76,11 @@ jobs:
         run: |
           bash scripts/prepare-swift-packages.sh "$RUNNER_TEMP/NethrivaPackages"
           xcodebuild build -project Nethriva.xcodeproj -scheme Nethriva \
-            -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -configuration Debug -destination 'generic/platform=macOS' \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
             -disableAutomaticPackageResolution -skipPackagePluginValidation \
-            -derivedDataPath "$RUNNER_TEMP/codeql-data" CODE_SIGNING_ALLOWED=NO
+            -derivedDataPath "$RUNNER_TEMP/codeql-data" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
 
   acceptance:
