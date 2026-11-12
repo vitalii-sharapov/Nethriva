@@ -525,14 +525,18 @@ final class VirtualizationTests: XCTestCase {
         XCTAssertFalse(server.upgradeRequest.lowercased().contains("authorization:"))
         var pixel: [Int] = []
         // Connection readiness precedes noVNC's asynchronous first framebuffer.
-        // getImageData on a zero-sized canvas throws InvalidStateError in WebKit.
-        // Wait for actual pixels, never treating the connection event as a paint.
+        // A nonzero size also precedes WebKit's backing-store readiness. Retry
+        // only InvalidStateError within this bound; actual pixels must match.
         for _ in 0..<100 {
             pixel = try await webView.evaluateJavaScript("""
             (() => {
                 const canvas = document.querySelector('#screen canvas');
                 if (!canvas || canvas.width < 1 || canvas.height < 1) return [];
-                return Array.from(canvas.getContext('2d').getImageData(0,0,1,1).data);
+                try { return Array.from(canvas.getContext('2d').getImageData(0,0,1,1).data); }
+                catch (error) {
+                    if (error.name === 'InvalidStateError') return [];
+                    throw error;
+                }
             })()
             """) as? [Int] ?? []
             if pixel == [32, 128, 224, 255] { break }

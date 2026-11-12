@@ -21,7 +21,7 @@ Nethriva **0.13.0 (build 30)** is a preview release. Download the Apple-silicon 
 
 Virtualization integrations are new in 0.13.0 and require host-specific setup and permissions. Automated checks cover parsing, bundled console loading, and local console transports; live interoperability with each host platform still needs validation. VMware requests one-time WebMKS tickets and renders the console with bundled noVNC inside a tab, without VMRC or a vCenter web-page login; Hyper-V uses the existing embedded RDP bridge. See the [virtualization setup guide](docs/VIRTUALIZATION.md) and [compatibility matrix](docs/COMPATIBILITY.md) before configuring a host.
 
-Nethriva is currently distributed as an Xcode project. The project folder contains the application source, tests, application and brand assets, the native RDP bridge source, a bundled Apple-silicon RDP runtime, and its third-party license notices.
+Nethriva provides downloadable app packages on GitHub Releases and source as an Xcode project. The project folder contains the application source, tests, application and brand assets, the native RDP bridge source, a bundled Apple-silicon RDP runtime, and its third-party license notices.
 
 ## Requirements and current platform support
 
