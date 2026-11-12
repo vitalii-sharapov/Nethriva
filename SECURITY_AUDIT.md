@@ -6,6 +6,8 @@ Assessment dates: November 8–11, 2026. Assessed baseline: **0.13.0/build 29**,
 
 ## Verification checkpoint
 
+Publication analysis follow-up (build 30): remote CodeQL executed successfully on the compatible Intel analysis host and reported [open alert 1](https://github.com/vitalii-sharapov/Nethriva/security/code-scanning/1), `swift/weak-sensitive-data-hashing` (High), in the legacy VMware SHA-1 certificate fingerprint path. SHA-256/full-certificate identities are preferred, but a ticket containing only a legacy SHA-1 thumbprint can still authorize its console certificate. This is certificate identity comparison, not password hashing, and no interception/collision exploit was demonstrated. The weak-hash compatibility path remains in this preview; the alert is not dismissed or declared fixed. Removing its independent trust authority, with legacy interoperability tests, is additional production hardening. The original 15-finding counts below describe the earlier grouped assessment, not this later CodeQL alert. A completed CodeQL job does not mean zero findings.
+
 | Item | Recorded state |
 | --- | --- |
 | Finding classification | **0 Critical, 6 High, 8 Medium, 1 Low**; 15 grouped findings below. No arbitrary-code-execution exploit was demonstrated. |
@@ -29,7 +31,7 @@ Nethriva supports Local Terminal, SSH, SFTP, Telnet, Serial, RDP, host inventory
 | Persistence | Versioned connection/profile metadata in active-profile UserDefaults stores with recovery backups. Debug, Release and hosted testing use distinct data/credential namespaces. Metadata is not encrypted at rest. |
 | Local credentials | `KeychainService`/`GatedCredentialVault`; passwords indexed separately from metadata. Accessibility is `WhenUnlockedThisDeviceOnly`; app privacy gates and epoch checks surround credential operations. |
 | External credentials | `ExternalCredentials`: allowlisted 1Password CLI path/reference or strict HTTPS Vault KV v2. Private pipes, bounded responses, redirect refusal, cancellation and volatile tokens; no provider secret copied to connection archives. |
-| Terminal | SwiftTerm 1.20.0, pinned revision. Local shell and `/usr/bin/ssh` use real PTYs through `PasteableLocalProcessTerminalView`. Terminal parser output is untrusted, including on an authenticated SSH session. |
+| Terminal | SwiftTerm 1.99.3, pinned revision. Local shell and `/usr/bin/ssh` use real PTYs through app-owned bounded `ManagedProcessTerminalView` delivery. Terminal parser output is untrusted, including on an authenticated SSH session. |
 | SSH/SFTP | macOS OpenSSH owns cryptography, host trust, key/agent/config handling and jump hosts. SFTP uses bounded binary v3 framing over a subsystem, independent channels and private authenticated masters. File operations are not shell commands. |
 | Telnet/Serial | Network.framework TCP with Telnet negotiation; POSIX no-follow character-terminal I/O with termios for Serial. Neither provides network confidentiality for an exposed legacy path. |
 | RDP | Bundled FreeRDP/WinPR/OpenSSL plus Objective-C Cocoa bridge, loaded in-process from app resources. Clipboard, audio, graphics and device channels execute native dependency code. Credentials enter memory/private pipes, not OS argv. |
