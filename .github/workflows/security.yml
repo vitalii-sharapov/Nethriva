@@ -44,6 +44,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Test app and security boundaries on arm64
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
         run: |
           sudo xcode-select -s /Applications/Xcode_27.2.app
           bash scripts/security-test.sh "$RUNNER_TEMP/security-tests"
@@ -56,7 +58,9 @@ jobs:
           retention-days: 7
 
   swift-codeql:
-    runs-on: xcode-27
+    # Keep SwiftPM's sandbox enabled; the current tracer cannot launch macOS 27's
+    # arm64e sandbox-exec. Runtime/release jobs above still use current Xcode.
+    runs-on: macos-26-intel
     timeout-minutes: 45
     permissions:
       contents: read
@@ -65,8 +69,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Select current release toolchain
-        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - name: Select compatible analysis toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          swift --version
       - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: swift
@@ -80,7 +87,7 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/NethrivaPackages" \
             -disableAutomaticPackageResolution -skipPackagePluginValidation \
             -derivedDataPath "$RUNNER_TEMP/codeql-data" \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO
+            ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
 
   acceptance:

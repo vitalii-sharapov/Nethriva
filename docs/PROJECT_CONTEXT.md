@@ -83,7 +83,7 @@ Nethriva is the only public product identity and must be used consistently in al
 
 ### Embedded RDP
 
-- FreeRDP 3.33.1 with an in-process native Cocoa bridge and OpenSSL 3.5.9 LTS
+- FreeRDP 3.33.1 with an in-process native Cocoa bridge and OpenSSL 4.1.0
 - RDP desktops rendered inside Nethriva tabs
 - NLA by default with TLS 1.2 minimum, system certificate/hostname verification, and domain-qualified usernames
 - Optional save-on-success checkbox in the RDP authentication prompt; passwords go to Keychain and usernames/domains to connection metadata
@@ -100,7 +100,7 @@ Nethriva is the only public product identity and must be used consistently in al
 - Virtualization Host connections: Proxmox VE, VMware ESXi/vCenter, QEMU/libvirt, Hyper-V, Xen Orchestra, and Nutanix AHV through Prism Central
 - Searchable inventory, independent console tabs, confirmed lifecycle operations, and host-side ISO/guest-tools media requests
 - Direct VNC/SPICE connections, opt-in text clipboard, view-only, fitting, input release, and optional SSH forwarding
-- Bundled unmodified noVNC 1.6.0 and SPICE HTML5 modules hosted by nonpersistent WebKit; native TCP/WSS transports controlled by Swift
+- Bundled unmodified noVNC 1.7.0 and reviewed SPICE HTML5 revision 85262d0 hosted by nonpersistent WebKit; native TCP/WSS transports controlled by Swift
 - VMware uses `AcquireTicket(webmks)` with bundled noVNC over direct WSS, not a host web page or proprietary SDK; Hyper-V reuses FreeRDP VMConnect on port 2179
 - VMware ticket endpoints use a separate cookie/HTTP-credential-free session, reject redirects, and verify the ESXi leaf certificate against the API-issued SHA-256/legacy SHA-1 thumbprint or PEM certificate. Missing pins require system trust. Tickets remain native/in-memory; reconnect requests a fresh ticket. Interactive federation now has an experimental registered-client PKCE/MFA/token-exchange/SAML bearer flow, requiring administrator setup and live acceptance; successful inventory credentials can authorize console tickets independently of web SSO.
 - REST/JSON-RPC/SOAP over per-host ephemeral HTTP sessions; SSH helpers use private input pipes and safe quoting/encoded PowerShell

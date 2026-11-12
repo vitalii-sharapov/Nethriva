@@ -536,15 +536,20 @@ final class VirtualizationTests: XCTestCase {
         let placeholderHidden = try await webView.evaluateJavaScript("document.getElementById('spice-screen').hidden") as? Bool
         XCTAssertEqual(placeholderHidden, true)
         window.setContentSize(NSSize(width: 320, height: 240))
-        let fitted = try await webView.callAsyncJavaScript("""
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Wait in Swift rather than leaving an asynchronous JavaScript task in
+        // WebKit during native window relayout (macOS 27.0 WebKit can tear down
+        // that task with InvalidTransition/removedFromContainer).
+        try await Task.sleep(for: .milliseconds(50))
+        let fitted = try await webView.evaluateJavaScript("""
+        (() => {
         window.consoleAction('fit', false);
         window.consoleAction('fit', true);
         const canvas = document.querySelector('#screen canvas');
         const rect = canvas.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 && rect.width <= innerWidth + 1 && rect.height <= innerHeight + 1 &&
                Math.abs(rect.width / rect.height - 640 / 480) < 0.01 && canvas.width === 640 && canvas.height === 480;
-        """, arguments: [:], in: nil, contentWorld: .page) as? Bool
+        })()
+        """) as? Bool
         XCTAssertEqual(fitted, true, "Fit must scale to the available tab, preserve proportions, and leave guest resolution unchanged")
         let delete = expectation(description: "Ctrl Alt Delete reached encrypted VMware-style transport")
         server.onDelete = { delete.fulfill() }; bridge.action("cad")
