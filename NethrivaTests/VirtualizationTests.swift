@@ -532,14 +532,14 @@ final class VirtualizationTests: XCTestCase {
                     const canvas = document.querySelector('#screen canvas');
                     if (!canvas || canvas.width < 1 || canvas.height < 1) return [];
                     const rect = canvas.getBoundingClientRect();
-                    return [rect.left, rect.top, rect.width, rect.height, canvas.width, canvas.height];
+                    return [rect.left, rect.top, rect.width, rect.height];
                 })()
                 """) as? [Double] ?? []
-                if geometry.count == 6, geometry[2] > 0, geometry[3] > 0 {
+                if geometry.count == 4, geometry[2] >= 16, geometry[3] >= 16 {
                     let snapshot = WKSnapshotConfiguration()
                     snapshot.afterScreenUpdates = true
-                    snapshot.rect = CGRect(x: geometry[0] + 2 * geometry[2] / geometry[4],
-                                           y: geometry[1] + 2 * geometry[3] / geometry[5], width: 1, height: 1)
+                    snapshot.rect = CGRect(x: geometry[0] + geometry[2] / 2 - 8,
+                                           y: geometry[1] + geometry[3] / 2 - 8, width: 16, height: 16)
                     let image = try await webView.takeSnapshot(configuration: snapshot)
                     if let data = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: data),
                        let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2) {
@@ -550,6 +550,7 @@ final class VirtualizationTests: XCTestCase {
                 if pixel == [32, 128, 224, 255] { break }
                 try await Task.sleep(for: .milliseconds(100))
             }
+            XCTAssertTrue(server.requestedFramebuffer, "The client must request a frame through the encrypted WebMKS transport")
             XCTAssertEqual(pixel, [32, 128, 224, 255], "Framebuffers must render over the encrypted WebMKS transport")
             step = "measure visible canvas"
             let visible = try await webView.evaluateJavaScript("""
@@ -864,8 +865,10 @@ private final class MockVNCServer: @unchecked Sendable {
     private let lock = NSLock()
     private var requestText = ""
     private var connectionCount = 0
+    private var framebufferRequested = false
     var upgradeRequest: String { lock.withLock { requestText } }
     var acceptedConnections: Int { lock.withLock { connectionCount } }
+    var requestedFramebuffer: Bool { lock.withLock { framebufferRequested } }
     init(tls: sec_identity_t? = nil, webSocket: Bool = false, redirect: Bool = false) throws {
         self.webSocket = webSocket
         self.redirect = redirect
@@ -955,20 +958,45 @@ private final class MockVNCServer: @unchecked Sendable {
             var header = Data([2, 128, 1, 224, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0])
             let name = Data("Test VM".utf8)
             header += Data([0, 0, 0, UInt8(name.count)]); header += name; write(header)
-            if webSocket {
-                // An 8x8 solid region permits an interior pixel sample after
-                // Retina/CSS scaling without sampling an interpolation edge.
-                var update = Data([0, 0, 0, 2, 0, 0, 0, 0, 0, 8, 0, 8, 0, 0, 0, 0])
-                for _ in 0..<64 { update += Data([32, 128, 224, 0]) }
-                // VMware's alpha-cursor pseudo-encoding still follows the frame.
-                update += Data([0, 0, 0, 0, 0, 1, 0, 1, 0x57, 0x4d, 0x56, 0x64, 1, 0, 255, 0, 0, 255])
-                write(update)
-            }
         }
-        if stage == 3, !reportedDelete, input.range(of: Data([4, 1, 0, 0, 0, 0, 255, 255])) != nil {
+        guard stage == 3 else { return }
+        if webSocket && !requestedFramebuffer { respondToInitialFramebufferRequest() }
+        if !reportedDelete, input.range(of: Data([4, 1, 0, 0, 0, 0, 255, 255])) != nil {
             reportedDelete = true; onDelete?()
         }
     }
+
+    private func respondToInitialFramebufferRequest() {
+        // The RFB client sends SetPixelFormat and SetEncodings before requesting
+        // its first update. Wait for a full request rather than sending pixels
+        // during server initialization. Messages may span WebSocket frames.
+        while let type = input.first {
+            let length: Int
+            switch type {
+            case 0: length = 20
+            case 2:
+                guard input.count >= 4 else { return }
+                length = 4 + 4 * (Int(input[input.startIndex + 2]) << 8 | Int(input[input.startIndex + 3]))
+            case 3:
+                guard input.count >= 10 else { return }
+                input.removeFirst(10)
+                lock.withLock { framebufferRequested = true }
+                // Center a 64x64 solid region in the 640x480 frame so sampling
+                // remains away from clipping, pixel edges and the guest cursor.
+                var update = Data([0, 0, 0, 2, 1, 32, 0, 208, 0, 64, 0, 64, 0, 0, 0, 0])
+                let pixel = Data([32, 128, 224, 0])
+                for _ in 0..<(64 * 64) { update.append(pixel) }
+                // The fixture also delivers VMware's alpha-cursor pseudo-encoding.
+                update += Data([0, 0, 0, 0, 0, 1, 0, 1, 0x57, 0x4d, 0x56, 0x64, 1, 0, 255, 0, 0, 255])
+                write(update)
+                return
+            default: return
+            }
+            guard input.count >= length else { return }
+            input.removeFirst(length)
+        }
+    }
+
     func stop() { listener.cancel(); connection?.cancel() }
 }
 
