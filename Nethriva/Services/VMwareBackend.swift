@@ -362,28 +362,27 @@ final class VMwareBackend: VirtualizationBackend {
             guard let url = components.url else { throw invalid(.endpoint) }
             socketURL = url
         }
-        var sha256 = Set<String>(), sha1 = Set<String>()
+        var sha256 = Set<String>()
         for entry in ticket.children where entry.name == "certThumbprintList" {
             var algorithm = entry.child("hashAlgorithm")?.text.lowercased().replacingOccurrences(of: "-", with: "")
             guard let raw = entry.child("thumbprint")?.text else { throw invalid(.thumbprint) }
             // VMware declares hashAlgorithm optional. Infer only an omitted
             // algorithm from a strictly validated digest, not an unknown label.
             if algorithm == nil || algorithm == "" {
-                if VMConsoleCertificatePin.normalize(raw, algorithm: .sha256) != nil { algorithm = "sha256" }
-                else if VMConsoleCertificatePin.normalize(raw, algorithm: .sha1) != nil { algorithm = "sha1" }
+                if VMConsoleCertificatePin.normalize(raw) != nil { algorithm = "sha256" }
+                else if VMConsoleCertificatePin.normalize(raw, length: 40) != nil { algorithm = "sha1" }
                 else { throw invalid(.thumbprint) }
             }
             if algorithm == "sha256" {
-                guard let normalized = VMConsoleCertificatePin.normalize(raw, algorithm: .sha256) else { throw invalid(.thumbprint) }
+                guard let normalized = VMConsoleCertificatePin.normalize(raw) else { throw invalid(.thumbprint) }
                 sha256.insert(normalized)
             } else if algorithm == "sha1" {
-                guard let normalized = VMConsoleCertificatePin.normalize(raw, algorithm: .sha1) else { throw invalid(.thumbprint) }
-                sha1.insert(normalized)
+                // Validate legacy ticket metadata without turning it into a trust pin.
+                guard VMConsoleCertificatePin.normalize(raw, length: 40) != nil else { throw invalid(.thumbprint) }
             }
         }
         if let raw = ticket.child("sslThumbprint")?.text, !raw.isEmpty {
-            guard let normalized = VMConsoleCertificatePin.normalize(raw, algorithm: .sha1) else { throw invalid(.legacyThumbprint) }
-            sha1.insert(normalized)
+            guard VMConsoleCertificatePin.normalize(raw, length: 40) != nil else { throw invalid(.legacyThumbprint) }
         }
         if let pem = ticket.child("sslCertificate")?.text, !pem.isEmpty {
             guard pem.utf8.count <= 65536, pem.contains("-----BEGIN CERTIFICATE-----"), pem.contains("-----END CERTIFICATE-----") else { throw invalid(.certificate) }
@@ -392,9 +391,8 @@ final class VMwareBackend: VirtualizationBackend {
             guard let der = Data(base64Encoded: base64), SecCertificateCreateWithData(nil, der as CFData) != nil else { throw invalid(.certificate) }
             sha256.insert(SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined())
         }
-        // Prefer SHA-256. A mismatched certificate must not fall back to SHA-1 or "ignore".
-        let pin: VMConsoleCertificatePin? = !sha256.isEmpty ? .init(algorithm: .sha256, fingerprints: sha256) :
-            (!sha1.isEmpty ? .init(algorithm: .sha1, fingerprints: sha1) : nil)
+        // Legacy-only tickets must pass normal macOS hostname and certificate validation.
+        let pin: VMConsoleCertificatePin? = sha256.isEmpty ? nil : .init(fingerprints: sha256)
         guard var origin = URLComponents(url: apiOrigin, resolvingAgainstBaseURL: false), origin.scheme == "https",
               origin.host != nil, origin.user == nil, origin.password == nil else { throw invalid(.origin) }
         origin.path = ""; origin.query = nil; origin.fragment = nil

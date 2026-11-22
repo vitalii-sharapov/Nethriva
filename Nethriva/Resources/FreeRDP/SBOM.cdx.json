@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:1071428b-7cd0-4e31-8e44-99fd9908ec84",
+  "serialNumber": "urn:uuid:7922a42b-81d0-4a0b-a0d1-ded0842211fe",
   "metadata": {
-    "timestamp": "2026-11-11T20:00:48.876108+00:00",
+    "timestamp": "2026-11-22T18:27:51.602198+00:00",
     "component": {
       "type": "application",
       "name": "Nethriva native RDP runtime",

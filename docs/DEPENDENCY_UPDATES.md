@@ -1,6 +1,6 @@
 # Dependency updates and version-build gate
 
-Current release version: **0.13.0/build 30**, November 11, 2026. Updated stack: FreeRDP/WinPR 3.33.1, OpenSSL 4.1.0, FDK-AAC 3.0.0, SwiftTerm 1.99.3, noVNC 1.7.0, SPICE commit 85262d0, CMake 4.4.5; the complete native/Swift/console/security-tool locks contain all other pins. Xcode 27.2/Swift 6.4.2 is the current validated toolchain. See [the release record](releases/0.13.0.md) for packaging and known limits.
+Version **0.13.1/build 31** uses CMake 4.5.1 and pkgconf 3.0.11 to build the native runtime. The CodeQL workflow pins v4.39.4. The runtime remains on FreeRDP/WinPR 3.33.1, OpenSSL 4.1.0, FDK-AAC 3.0.0, SwiftTerm 1.99.3, noVNC 1.7.0, and SPICE commit 85262d0. Xcode 27.2/Swift 6.4.2 is the release toolchain. See the [release record](releases/0.13.1.md).
 
 ## What runs before every version build
 

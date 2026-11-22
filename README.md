@@ -4,11 +4,11 @@
 
 Nethriva is an open-source native macOS connection manager for local terminal, SSH, Telnet, Serial, SFTP, RDP, and virtual-machine consoles. It uses a SwiftUI application shell with AppKit-hosted terminal and remote-desktop surfaces, keeps multiple live sessions organized in tabs, and stores saved credentials in macOS Keychain.
 
-Nethriva **0.13.0 (build 30)** is a release. Download the Apple-silicon DMG or ZIP from [v0.13.0](https://github.com/vitalii-sharapov/Nethriva/releases/tag/v0.13.0); both have SHA-256 checksum files. This build is locally/ad-hoc signed and not Apple-notarized. Review the [release notes, installation steps and known limits](docs/releases/0.13.0.md) before use. Version 0.13.0 is the latest release.
+Nethriva **0.13.1 (build 31)** updates VMware console certificate verification. Download the Apple silicon DMG or ZIP from [v0.13.1](https://github.com/vitalii-sharapov/Nethriva/releases/tag/v0.13.1). Both have SHA-256 checksum files. The app is locally signed and has no Apple notarization. See the [release notes](docs/releases/0.13.1.md).
 
-Known limitations include a failing WebMKS framebuffer check on GitHub's macOS 27.0.1 virtual machine and an open security warning for legacy VMware SHA-1 certificate fingerprints. Local macOS 27.2 and macOS 26 hosted console tests pass; this is not certification for every Mac, host or OS.
+See the [compatibility guide](docs/COMPATIBILITY.md) for platform coverage and known limitations.
 
-**[Download the Mac app — Apple silicon DMG](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.0/Nethriva-0.13.0-macOS-arm64.dmg)** · [ZIP](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.0/Nethriva-0.13.0-macOS-arm64.zip)
+**[Download the Mac app — Apple silicon DMG](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.1/Nethriva-0.13.1-macOS-arm64.dmg)** · [ZIP](https://github.com/vitalii-sharapov/Nethriva/releases/download/v0.13.1/Nethriva-0.13.1-macOS-arm64.zip)
 
 Open the DMG and drag **Nethriva.app** into **Applications**, or extract the ZIP and move the app there. No Xcode or compilation is needed for these downloads.
 
@@ -651,6 +651,10 @@ Nethriva is free and open-source software. If it saves you time and you would li
 Nethriva is licensed under the [Apache License 2.0](LICENSE). Third-party components remain under their respective licenses. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change and [SECURITY.md](SECURITY.md) for safe vulnerability reporting.
 
 ## Release notes
+
+### 0.13.1 — build 31
+
+- VMware console tickets that supply only a legacy SHA-1 fingerprint now require macOS to verify the console certificate and hostname. SHA-256 fingerprints and full certificates supplied by the VMware ticket remain supported. See [release notes and downloads](docs/releases/0.13.1.md).
 
 ### 0.13.0 — build 30
 

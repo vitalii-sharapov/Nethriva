@@ -24,7 +24,7 @@ Nethriva is a free, open-source, native macOS connection manager for local termi
 
 - Public repository: <https://github.com/vitalii-sharapov/Nethriva>
 - License: Apache License 2.0
-- Current project version: 0.13.0 (build 30)
+- Current project version: 0.13.1 (build 31)
 - Minimum macOS version: macOS 14
 - Current bundled RDP architecture: Apple silicon
 - GitHub Sponsors: <https://github.com/sponsors/vitalii-sharapov>
@@ -104,7 +104,7 @@ Nethriva is the only public product identity and must be used consistently in al
 - Direct VNC/SPICE connections, opt-in text clipboard, view-only, fitting, input release, and optional SSH forwarding
 - Bundled unmodified noVNC 1.7.0 and reviewed SPICE HTML5 revision 85262d0 hosted by nonpersistent WebKit; native TCP/WSS transports controlled by Swift
 - VMware uses `AcquireTicket(webmks)` with bundled noVNC over direct WSS, not a host web page or proprietary SDK; Hyper-V reuses FreeRDP VMConnect on port 2179
-- VMware ticket endpoints use a separate cookie/HTTP-credential-free session, reject redirects, and verify the ESXi leaf certificate against the API-issued SHA-256/legacy SHA-1 thumbprint or PEM certificate. Missing pins require system trust. Tickets remain native/in-memory; reconnect requests a fresh ticket. Interactive federation now has an experimental registered-client PKCE/MFA/token-exchange/SAML bearer flow, requiring administrator setup and live acceptance; successful inventory credentials can authorize console tickets independently of web SSO.
+- VMware ticket endpoints use a separate cookie/HTTP-credential-free session, reject redirects, and verify the ESXi leaf certificate against the API-issued SHA-256 thumbprint or PEM certificate. Tickets without a supported pin, including legacy SHA-1-only tickets, require macOS certificate and hostname validation. Tickets remain native/in-memory; reconnect requests a fresh ticket. Interactive federation now has an experimental registered-client PKCE/MFA/token-exchange/SAML bearer flow, requiring administrator setup and live acceptance; successful inventory credentials can authorize console tickets independently of web SSO.
 - REST/JSON-RPC/SOAP over per-host ephemeral HTTP sessions; SSH helpers use private input pipes and safe quoting/encoded PowerShell
 - Certificate verification defaults strict; optional fingerprint-based first-use trust; tokens/tickets remain in memory
 - Automated module loading and a synthetic VNC connection with Ctrl+Alt+Del passed; actual hypervisor/guest compatibility remains unverified

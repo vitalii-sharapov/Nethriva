@@ -4,7 +4,7 @@
 
 Security remediation targets the latest development source. A fix in a working tree or on a source branch does not establish that a published binary contains it. Consult the specific release's notes and hashes before relying on a fix.
 
-The November 2026 hardening and follow-up fixes are included in the **0.13.0/build 30 release**. Version 0.12.1 and older test exports are separate artifacts and do not receive these fixes automatically. The release is ad-hoc signed and unnotarized; it does not satisfy production signing or complete security acceptance. Download manually from the release and preserve your connection-library backup before testing. See [the assessment](SECURITY_AUDIT.md), [testing evidence](SECURITY_TESTING.md), and [hardening requirements](SECURITY_HARDENING.md) for scope and unresolved checks.
+The **0.13.1/build 31 release** updates VMware console certificate verification. SHA-1-only tickets require normal macOS certificate and hostname validation. Install 0.13.1 to receive this fix. The app is locally signed and has no Apple notarization. See the [release notes](docs/releases/0.13.1.md), [assessment](SECURITY_AUDIT.md), and [test evidence](SECURITY_TESTING.md) for details.
 
 ## Reporting a vulnerability
 

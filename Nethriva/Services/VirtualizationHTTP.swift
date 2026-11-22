@@ -3,24 +3,17 @@ import CryptoKit
 import Foundation
 import Security
 
-/// Certificate authority delegated by an authenticated VMware ticket. Never persisted.
+/// SHA-256 certificate identity delegated by an authenticated VMware ticket. Never persisted.
 struct VMConsoleCertificatePin: Sendable {
-    enum Algorithm: Sendable { case sha256, sha1 }
-    let algorithm: Algorithm
     let fingerprints: Set<String>
 
-    static func normalize(_ value: String, algorithm: Algorithm) -> String? {
+    static func normalize(_ value: String, length: Int = 64) -> String? {
         let compact = value.replacingOccurrences(of: ":", with: "").lowercased()
-        let count = algorithm == .sha256 ? 64 : 40
-        guard compact.count == count, compact.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
+        guard compact.count == length, compact.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
         return compact
     }
     func matches(_ certificate: Data) -> Bool {
-        let digest: String
-        switch algorithm {
-        case .sha256: digest = SHA256.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
-        case .sha1: digest = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
-        }
+        let digest = SHA256.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
         return fingerprints.contains(digest)
     }
 }

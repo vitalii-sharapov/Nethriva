@@ -22,7 +22,7 @@
     "libusb": "1.0.30",
     "WinPR": "3.33.1"
   },
-  "sourceLockSHA256": "5d8946aed474be931cf6581fa2ea54ee32324257a5d384b72629afbbe500cf5a",
+  "sourceLockSHA256": "010e3a7d2a591da061d4bda0519bbdfba806da765adf7db59df3f686c3e69285",
   "patches": [
     "freerdp-3.33.1-gfx-budgets.patch"
   ],
@@ -55,23 +55,23 @@
   ],
   "verification": "HTTPS official upstream release sources, pinned source SHA-256; detached PGP signatures not locally verified",
   "nativeFiles": {
-    "Frameworks/libNethrivaRDP.dylib": "17914379e26cbd4c6d1ace43c5ee381e2b7ab2f201b21e5627ed9ced7373ef1b",
+    "Frameworks/libNethrivaRDP.dylib": "53056950e453dcd7dda0b6ce0a242ebc9197fa9320307d49a135d9d9e6e724c8",
     "Frameworks/libSDL3.0.dylib": "921dab71aa89f78d612e74dff3dd5d2207db66f9115671acd20414c61d29a7d9",
-    "Frameworks/libSDL3_ttf.0.2.2.dylib": "06769e6d584be50efc663a14cba30429bc6ba2159ca9703c4bb21ac0e92b2bf2",
-    "Frameworks/libcrypto.4.dylib": "183f44a759042f7a8a66ab0d1fa71870640439dfa9a889d044c5bcd987032f3e",
-    "Frameworks/libfdk-aac.2.0.4.dylib": "8ecc5520c9b583aee1345088f95fa58804ca7747b759a17b401424a45e53a758",
-    "Frameworks/libfreerdp-client3.3.33.1.dylib": "a55f227988abbb60f97f10ec3ad26760e28d9c994f93853f5afc07fb4d449015",
-    "Frameworks/libfreerdp3.3.33.1.dylib": "5c54f65cb4414b36bb817c39b90c549ec7aa462674e33cb520302f26b8d0d7a3",
+    "Frameworks/libSDL3_ttf.0.2.2.dylib": "f7b266f6b3d001f6a52432ecc040ddd60436f24a197591d7f27058a279f83a23",
+    "Frameworks/libcrypto.4.dylib": "917113696d1689234ee309981af1ed445d9503074a3b9ebd76bde9c616b051d3",
+    "Frameworks/libfdk-aac.2.0.4.dylib": "634c26671ec54525be6bb736d18f00a2638e52d14fc371d3dc6a195d290c959c",
+    "Frameworks/libfreerdp-client3.3.33.1.dylib": "ada09be81502c5eefb4a7102900196ec6f398a510d1c450481b7ec8f1cb87650",
+    "Frameworks/libfreerdp3.3.33.1.dylib": "90015df4ef5afc15a0f0924e3e312c5f93ad3c5c46e30220a94d12ad4dada569",
     "Frameworks/libfreetype.6.20.7.dylib": "b14ab257f79d77e35de25953cdecc907f90350e2f20778ec85ee3443be5354af",
     "Frameworks/libjson-c.5.5.0.dylib": "dd8a43fa004a0d8e93f269aadc5de8b1b7ca1e16efd8a9388c2862d96a0487f2",
-    "Frameworks/libopenh264.2.7.0.dylib": "f78d1566ba667d4b4774f57dc7f276e250aa287a1eb842dbfa3082258c5bc947",
-    "Frameworks/libopus.0.11.1.dylib": "92a21a55f0d8d76207e0df2e52ce40b8eba4f109cc980331365f78a41d73ed0c",
-    "Frameworks/libssl.4.dylib": "a21ffec2f508fc9528bbb55c74f52d06878fb34e42885b7b0016fa76d23114f2",
+    "Frameworks/libopenh264.2.7.0.dylib": "31410178783faba7f1b40aa955de7afc0ab5c26ccdc0526e95d8a16e311cd6e4",
+    "Frameworks/libopus.0.11.1.dylib": "fe6f3dc1f03f7b62192dbe176ef6afe246b6271b9d64cb3c782257d606224833",
+    "Frameworks/libssl.4.dylib": "b6e3f95a60090a2ec03028a68aee490bea794be0aed1019f0b45951c05123073",
     "Frameworks/liburiparser.1.2.3.dylib": "b6e5dff93230887545f51f67e16c1ec8953b78b3ece6e58a002d06ccc14f62cd",
-    "Frameworks/libusb-1.0.0.dylib": "7335fa92b1cd54ae7d3cd633f1b2cd2b3371f7228c8c80d679a03b8dd69d75bc",
-    "Frameworks/libwinpr3.3.33.1.dylib": "aea04fa1d3231d4329ed62f68639b91ffec16f8b283426ad079f0a97b2dbdce1",
+    "Frameworks/libusb-1.0.0.dylib": "908dc96befbec00445799ed3bda54693dd543ecab47eceb00c3471152e3a4647",
+    "Frameworks/libwinpr3.3.33.1.dylib": "431dcb138d587af2a15c4064c1e7d75e5cc639f99e2da09bdca6a2d811c1fb85",
     "Frameworks/libz.1.4.dylib": "0beacb81f7b92da9a768861f424fd8335af4f152fd8a68463d93a7d48465a886",
-    "Frameworks/ossl-modules/legacy.dylib": "ddddc7faf3fc88e3f9074fa47f5abd1e987aad91cb1e1eab298b8e45dc2e228e",
-    "MacOS/sdl-freerdp": "77225db9a94abc1c4fcdb805d7f535650bca185cf6267b08bcb955c0ef0688af"
+    "Frameworks/ossl-modules/legacy.dylib": "e134ee25036de0c28f3ecb92de132d3bfa4f1cc47c427c392208e25832934fa1",
+    "MacOS/sdl-freerdp": "cb94af6d4914c08787ba9ac879cce9814c32424137c66fb35ae2fab46cc5de51"
   }
 }

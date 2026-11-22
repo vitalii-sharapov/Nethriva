@@ -106,7 +106,7 @@ def autotools(name):
         subprocess.check_call(['make','-j6'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT)
         subprocess.check_call(['make','install'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT)
     print('Built',name,flush=True)
-for name in ['pkgconf-3.0.10','libusb-1.0.30']:autotools(name)
+for name in [next(item['sourceDirectory'] for item in lock['tooling'] if item['name']=='pkgconf'),'libusb-1.0.30']:autotools(name)
 with (root/'logs/openh264.log').open('w') as log:
     command=['make','ARCH=arm64','OS=darwin','PREFIX='+str(prefix),'CFLAGS_OPT='+flags]
     subprocess.check_call(command+['-j6','libraries'],cwd=root/'sources/openh264-2.7.0',env=env,stdout=log,stderr=subprocess.STDOUT)

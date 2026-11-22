@@ -318,11 +318,11 @@ final class VirtualizationTests: XCTestCase {
         let sha256 = String(repeating: "a", count: 64), sha1 = String(repeating: "b", count: 40)
         let fields = "<host>esxi.example.invalid</host><port>443</port>"
         let value = try descriptor(fields + "<sslThumbprint>\(sha1)</sslThumbprint><certThumbprintList><hashAlgorithm>SHA-256</hashAlgorithm><thumbprint>\(sha256)</thumbprint></certThumbprintList>")
-        XCTAssertEqual(value.certificatePin?.algorithm, .sha256)
         XCTAssertEqual(value.certificatePin?.fingerprints, [sha256])
-        XCTAssertEqual(try descriptor(fields + "<sslThumbprint>\(sha1)</sslThumbprint>").certificatePin?.algorithm, .sha1)
-        XCTAssertEqual(try descriptor(fields + "<certThumbprintList><thumbprint>\(sha256)</thumbprint></certThumbprintList>").certificatePin?.algorithm, .sha256)
-        XCTAssertEqual(try descriptor(fields + "<certThumbprintList><thumbprint>\(sha1)</thumbprint></certThumbprintList>").certificatePin?.algorithm, .sha1)
+        XCTAssertNil(try descriptor(fields + "<sslThumbprint>\(sha1)</sslThumbprint>").certificatePin)
+        XCTAssertEqual(try descriptor(fields + "<certThumbprintList><thumbprint>\(sha256)</thumbprint></certThumbprintList>").certificatePin?.fingerprints, [sha256])
+        XCTAssertNil(try descriptor(fields + "<certThumbprintList><thumbprint>\(sha1)</thumbprint></certThumbprintList>").certificatePin)
+        XCTAssertNil(try descriptor(fields + "<certThumbprintList><hashAlgorithm>SHA-1</hashAlgorithm><thumbprint>\(sha1)</thumbprint></certThumbprintList>").certificatePin)
         XCTAssertNil(try descriptor(fields + "<certThumbprintList><hashAlgorithm>unknown</hashAlgorithm><thumbprint>\(sha256)</thumbprint></certThumbprintList>").certificatePin)
         XCTAssertNil(try descriptor(fields).certificatePin, "Missing pin requires system certificate validation")
         XCTAssertEqual(try descriptor("<url>wss://esxi.example.invalid/ticket/synthetic-ticket</url>").webSocketURL?.scheme, "wss")
@@ -391,10 +391,10 @@ final class VirtualizationTests: XCTestCase {
     func testVMwareCertificatePinsMatchOnlyExpectedDER() throws {
         let certificate = Data("synthetic-certificate-data".utf8)
         let hash = SHA256.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
-        let pin = VMConsoleCertificatePin(algorithm: .sha256, fingerprints: [hash])
+        let pin = VMConsoleCertificatePin(fingerprints: [hash])
         XCTAssertTrue(pin.matches(certificate)); XCTAssertFalse(pin.matches(Data("other-certificate".utf8)))
-        XCTAssertEqual(VMConsoleCertificatePin.normalize(hash.uppercased(), algorithm: .sha256), hash)
-        XCTAssertNil(VMConsoleCertificatePin.normalize("\n" + hash, algorithm: .sha256))
+        XCTAssertEqual(VMConsoleCertificatePin.normalize(hash.uppercased()), hash)
+        XCTAssertNil(VMConsoleCertificatePin.normalize("\n" + hash))
     }
 
     func testVMwareConsoleFailureMessagesAreSpecificAndRedacted() {
@@ -420,14 +420,14 @@ final class VirtualizationTests: XCTestCase {
         XCTAssertFalse(VMConsoleTrustResult.notChallenged.failureMessage(NSError(domain: "untrusted-server-text", code: -1200)).contains("TLS handshake"))
     }
 
-    @MainActor func testWebMKSTLSAcceptsLegacyAndOmittedAlgorithmPins() async throws {
+    @MainActor func testWebMKSTLSAcceptsOmittedSHA256AlgorithmAndFullCertificate() async throws {
         let identity = try await Task.detached { try MockTLSIdentity() }.value
-        let sha1 = Insecure.SHA1.hash(data: identity.der).map { String(format: "%02x", $0) }.joined(separator: ":")
-        for fields in ["<sslThumbprint>\(sha1)</sslThumbprint>",
-                       "<certThumbprintList><thumbprint>\(identity.sha256)</thumbprint></certThumbprintList>"] {
+        let pem = "-----BEGIN CERTIFICATE-----\n\(identity.der.base64EncodedString())\n-----END CERTIFICATE-----"
+        for fields in ["<certThumbprintList><thumbprint>\(identity.sha256)</thumbprint></certThumbprintList>",
+                       "<sslCertificate>\(pem)</sslCertificate>"] {
             let server = try MockVNCServer(tls: identity.identity, webSocket: true)
             defer { server.stop() }
-            let started = expectation(description: "Legacy ticket TLS server listening")
+            let started = expectation(description: "Pinned ticket TLS server listening")
             server.start { started.fulfill() }
             await fulfillment(of: [started], timeout: 5)
             let port = try XCTUnwrap(server.listener.port).rawValue
@@ -601,7 +601,7 @@ final class VirtualizationTests: XCTestCase {
         let port = try XCTUnwrap(server.listener.port).rawValue
         let url = URL(string: "wss://127.0.0.1:\(port)/ticket/synthetic-ticket")!
         let transport = try VMConsoleTicketTLS(descriptor: .init(renderer: .vnc, webSocketURL: url,
-            certificatePin: .init(algorithm: .sha256, fingerprints: [String(repeating: "a", count: 64)]), singleUseTicket: true))
+            certificatePin: .init(fingerprints: [String(repeating: "a", count: 64)]), singleUseTicket: true))
         defer { transport.connection.cancel() }
         let probe = MockTicketProbe(), rejected = expectation(description: "Native ticket rejects wrong certificate")
         probe.start(transport) { rejected.fulfill() }
@@ -630,6 +630,33 @@ final class VirtualizationTests: XCTestCase {
         XCTAssertTrue(transport.failureMessage(probe.error).contains("no supported certificate identity"))
     }
 
+    @MainActor func testWebMKSTLSLegacyThumbprintCannotAuthorizeUntrustedCertificate() async throws {
+        let identity = try await Task.detached { try MockTLSIdentity() }.value
+        let server = try MockVNCServer(tls: identity.identity, webSocket: true)
+        defer { server.stop() }
+        let started = expectation(description: "Synthetic TLS server listening")
+        server.start { started.fulfill() }
+        await fulfillment(of: [started], timeout: 5)
+        let port = try XCTUnwrap(server.listener.port).rawValue
+        let sha1 = Insecure.SHA1.hash(data: identity.der).map { String(format: "%02x", $0) }.joined(separator: ":")
+        let response = try VMXMLDocument.parse(Data("""
+        <AcquireTicketResponse><returnval><ticket>synthetic-ticket</ticket>
+        <host>localhost</host><port>\(port)</port><sslThumbprint>\(sha1)</sslThumbprint>
+        </returnval></AcquireTicketResponse>
+        """.utf8))
+        let descriptor = try VMwareBackend.consoleDescriptor(response, apiOrigin: URL(string: "https://vc.example.invalid")!)
+        XCTAssertNil(descriptor.certificatePin)
+        let transport = try VMConsoleTicketTLS(descriptor: descriptor)
+        defer { transport.connection.cancel() }
+        let probe = MockTicketProbe()
+        let completed = expectation(description: "Legacy-only console trust check completed")
+        probe.start(transport) { completed.fulfill() }
+        await fulfillment(of: [completed], timeout: 5)
+        XCTAssertNotNil(probe.error, "A matching legacy thumbprint cannot replace system trust")
+        XCTAssertTrue(server.upgradeRequest.isEmpty, "The console ticket must not reach the untrusted server")
+        XCTAssertTrue(transport.failureMessage(probe.error).contains("no supported certificate identity"))
+    }
+
     @MainActor func testNativeWebMKSTransportRejectsRedirectsAndGlobalATSExceptions() async throws {
         let ats = Bundle.main.infoDictionary?["NSAppTransportSecurity"] as? [String: Any]
         XCTAssertNotEqual(ats?["NSAllowsArbitraryLoads"] as? Bool, true)
@@ -642,7 +669,7 @@ final class VirtualizationTests: XCTestCase {
         let port = try XCTUnwrap(server.listener.port).rawValue
         let transport = try VMConsoleTicketTLS(descriptor: .init(renderer: .vnc,
             webSocketURL: URL(string: "wss://localhost:\(port)/ticket/synthetic-ticket")!,
-            certificatePin: .init(algorithm: .sha256, fingerprints: [identity.sha256]), singleUseTicket: true,
+            certificatePin: .init(fingerprints: [identity.sha256]), singleUseTicket: true,
             headers: ["Origin": "https://vc.example.invalid", "Cookie": "must-not-send", "Authorization": "must-not-send"]))
         defer { transport.connection.cancel() }
         let probe = MockTicketProbe(), rejected = expectation(description: "Native WebSocket refuses redirects")

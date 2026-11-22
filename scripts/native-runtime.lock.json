@@ -128,18 +128,18 @@
   "tooling": [
     {
       "name": "CMake",
-      "version": "4.4.5",
-      "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-macos-universal.tar.gz",
-      "sha256": "679e77a96b9ef9484cc6c1445255fc4f84206b48a65420efbedf16bdab55fbff",
-      "filename": "cmake-4.4.5-macos-universal.tar.gz",
-      "binaryPath": "cmake-4.4.5-macos-universal/CMake.app/Contents/bin/cmake"
+      "version": "4.5.1",
+      "url": "https://github.com/Kitware/CMake/releases/download/v4.5.1/cmake-4.5.1-macos-universal.tar.gz",
+      "sha256": "e1fb288543e4eb2a410e385ecebc64323bda51f0205782f2b094ccd5d572ca2d",
+      "filename": "cmake-4.5.1-macos-universal.tar.gz",
+      "binaryPath": "cmake-4.5.1-macos-universal/CMake.app/Contents/bin/cmake"
     },
     {
       "name": "pkgconf",
-      "version": "3.0.10",
-      "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.10.tar.xz",
-      "sha256": "9371b2f6372da574d4c6dc96fe9b1463037bcf6afcb6671c1555afde7b17e2de",
-      "sourceDirectory": "pkgconf-3.0.10"
+      "version": "3.0.11",
+      "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.11.tar.xz",
+      "sha256": "d0cd841bc8e55b9da888106c00dc256d05b7d1d8e5a46f4be4eb4c5125bd2dc4",
+      "sourceDirectory": "pkgconf-3.0.11"
     }
   ],
   "patches": [
